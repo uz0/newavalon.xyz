@@ -224,6 +224,7 @@ export const useGameState = () => {
     isPrivate: true,
     isReadyCheckActive: false,
     revealRequests: [],
+    activeTurnPlayerId: undefined,
   }), []);
 
   const [gameState, setGameState] = useState<GameState>(createInitialState);
@@ -493,6 +494,7 @@ export const useGameState = () => {
                 isGameStarted: false,
                 isReadyCheckActive: false,
                 revealRequests: [],
+                activeTurnPlayerId: undefined,
             };
         });
     }, [updateState, createDeck]);
@@ -955,6 +957,16 @@ export const useGameState = () => {
     });
   }, [updateState]);
   
+    const toggleActiveTurnPlayer = useCallback((playerId: number) => {
+        updateState(currentState => {
+            const newActiveId = currentState.activeTurnPlayerId === playerId ? undefined : playerId;
+            return {
+                ...currentState,
+                activeTurnPlayerId: newActiveId,
+            };
+        });
+    }, [updateState]);
+
   /**
    * Moves a card from one location to another (e.g., hand to board).
    * @param {DragItem} item - The item being dragged.
@@ -1003,9 +1015,13 @@ export const useGameState = () => {
         const isReturningToStorage = ['hand', 'deck', 'discard'].includes(target.target);
 
         // When a card returns to a 'storage' location (hand, deck, discard),
-        // clear all temporary statuses except 'Revealed'.
-        if (isReturningToStorage && cardToMove.statuses) {
-            cardToMove.statuses = cardToMove.statuses.filter(status => status.type === 'Revealed');
+        // clear all temporary statuses except 'Revealed', and reset its face-down state.
+        if (isReturningToStorage) {
+            if (cardToMove.statuses) {
+                cardToMove.statuses = cardToMove.statuses.filter(status => status.type === 'Revealed');
+            }
+            // Reset face-down status. When played again, it will use default rules (e.g., face-down from hand).
+            delete cardToMove.isFaceDown;
         }
 
         // --- Add the card to the target location ---
@@ -1044,7 +1060,7 @@ export const useGameState = () => {
                 // If a card is played from an external source (not just moved on the board),
                 // it becomes the "last played" card for its owner.
                 const isPlayedFromOffBoard = item.source !== 'board' && item.source !== 'announced';
-                if (isPlayedFromOffBoard && cardToMove.ownerId) {
+                if (isPlayedFromOffBoard && cardToMove.ownerId && cardToMove.deck !== DeckType.Tokens) {
                     const currentPlayerId = cardToMove.ownerId;
                     
                     // Clear LastPlayed from any other card owned by this player
@@ -1140,5 +1156,6 @@ export const useGameState = () => {
     syncGame,
     removeRevealedStatus,
     resetGame,
+    toggleActiveTurnPlayer,
   };
 };

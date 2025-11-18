@@ -34,6 +34,8 @@ interface PlayerPanelProps {
   playerColorMap: Map<number, PlayerColor>;
   allPlayers: Player[];
   localPlayerTeamId?: number;
+  activeTurnPlayerId?: number;
+  onToggleActiveTurn: (playerId: number) => void;
 }
 
 /**
@@ -105,6 +107,8 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
   playerColorMap,
   allPlayers,
   localPlayerTeamId,
+  activeTurnPlayerId,
+  onToggleActiveTurn,
 }) => {
   const positionClass = PLAYER_POSITIONS[position] || 'top-2 left-2';
   const isDisconnected = !!player.isDisconnected;
@@ -196,9 +200,12 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
     };
     reader.readAsText(file);
   };
+    
+  const isActiveTurn = player.id === activeTurnPlayerId;
+  const borderColorClass = isActiveTurn ? 'border-yellow-400' : localPlayerBorder ? 'border-indigo-500' : 'border-gray-700';
 
   return (
-    <div className={`fixed ${positionClass} min-w-[30rem] bg-panel-bg rounded-lg shadow-2xl p-3 flex flex-col z-10 border-2 ${localPlayerBorder ? 'border-indigo-500' : 'border-gray-700'} ${isDisconnected ? 'opacity-60' : ''}`}>
+    <div className={`fixed ${positionClass} min-w-[30rem] bg-panel-bg rounded-lg shadow-2xl p-3 flex flex-col z-10 border-2 ${borderColorClass} ${isDisconnected ? 'opacity-60' : ''}`}>
       {/* Player Info and Score */}
       <div className="flex items-center justify-between mb-2 gap-3">
         <div className="flex items-center gap-2 flex-grow">
@@ -248,10 +255,20 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
               className="bg-transparent font-bold text-xl p-1.5 flex-grow focus:bg-gray-800 rounded focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:cursor-default"
             />
         </div>
-        <div className="flex items-center space-x-1 flex-shrink-0">
-          <button onClick={() => onScoreChange(-1)} disabled={!canPerformActions} className="bg-gray-700 w-8 h-8 rounded disabled:opacity-50 disabled:cursor-not-allowed">-</button>
-          <span className="font-bold text-2xl w-10 text-center">{player.score}</span>
-          <button onClick={() => onScoreChange(1)} disabled={!canPerformActions} className="bg-gray-700 w-8 h-8 rounded disabled:opacity-50 disabled:cursor-not-allowed">+</button>
+        <div className="flex items-center space-x-2 flex-shrink-0">
+          <input
+            type="checkbox"
+            checked={isActiveTurn}
+            onChange={() => onToggleActiveTurn(player.id)}
+            disabled={!isLocalPlayer}
+            className="w-5 h-5 text-yellow-400 bg-gray-700 border-gray-600 rounded focus:ring-yellow-500 focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            title="Mark as active turn"
+          />
+          <div className="flex items-center space-x-1">
+            <button onClick={() => onScoreChange(-1)} disabled={!canPerformActions} className="bg-gray-700 w-8 h-8 rounded disabled:opacity-50 disabled:cursor-not-allowed">-</button>
+            <span className="font-bold text-2xl w-10 text-center">{player.score}</span>
+            <button onClick={() => onScoreChange(1)} disabled={!canPerformActions} className="bg-gray-700 w-8 h-8 rounded disabled:opacity-50 disabled:cursor-not-allowed">+</button>
+          </div>
         </div>
       </div>
       

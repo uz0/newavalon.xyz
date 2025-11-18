@@ -178,6 +178,7 @@ export default function App() {
     syncGame,
     removeRevealedStatus,
     resetGame,
+    toggleActiveTurnPlayer,
   } = useGameState();
 
   // State for managing UI modals.
@@ -301,20 +302,38 @@ export default function App() {
   
     /**
      * Double-click handler for cards on the board.
+     * - Flips the player's own face-down card face-up.
      * - Opens the detail view if the card is visible to the player.
      * - Sends a reveal request if the card is face-down and belongs to an opponent.
      */
     const handleDoubleClickBoardCard = (card: Card, boardCoords: { row: number, col: number }) => {
-        const owner = card.ownerId ? gameState.players.find(p => p.id === card.ownerId) : undefined;
         const isOwner = card.ownerId === localPlayerId;
+
+        // New logic: If it's your own face-down card, flip it up.
+        if (isOwner && card.isFaceDown) {
+            flipBoardCard(boardCoords);
+            return; // Action complete
+        }
+
+        // --- Existing logic for all other cases ---
+        const owner = card.ownerId ? gameState.players.find(p => p.id === card.ownerId) : undefined;
         const isRevealedByRequest = card.statuses?.some(s => s.type === 'Revealed' && s.addedByPlayerId === localPlayerId);
+        // A card is visible if it's not face down, or has been revealed in some way.
         const isVisibleForMe = !card.isFaceDown || card.revealedTo === 'all' || (Array.isArray(card.revealedTo) && card.revealedTo.includes(localPlayerId!)) || isRevealedByRequest;
 
+        // If it's visible to you, or if you're the owner (and it's face up, handled by the first `if`), view details.
         if (isVisibleForMe || isOwner) {
             setViewingCard({ card, player: owner });
         } else if (localPlayerId !== null) { // Not owner, not visible
             requestCardReveal({ source: 'board', ownerId: card.ownerId!, boardCoords }, localPlayerId);
         }
+    };
+    
+    /**
+     * Double-click handler for empty board cells to trigger a highlight.
+     */
+    const handleDoubleClickEmptyCell = (boardCoords: { row: number, col: number }) => {
+        triggerHighlight({ type: 'cell', row: boardCoords.row, col: boardCoords.col });
     };
 
     /**
@@ -749,6 +768,7 @@ export default function App() {
           playerColorMap={playerColorMap}
           localPlayerId={localPlayerId}
           onCardDoubleClick={handleDoubleClickBoardCard}
+          onEmptyCellDoubleClick={handleDoubleClickEmptyCell}
         />
       </main>
       
@@ -784,6 +804,8 @@ export default function App() {
           playerColorMap={playerColorMap}
           allPlayers={gameState.players}
           localPlayerTeamId={localPlayer?.teamId}
+          activeTurnPlayerId={gameState.activeTurnPlayerId}
+          onToggleActiveTurn={toggleActiveTurnPlayer}
         />
       ))}
 

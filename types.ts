@@ -134,6 +134,7 @@ export interface GameState {
   isPrivate: boolean;
   isReadyCheckActive: boolean;
   revealRequests: RevealRequest[];
+  activeTurnPlayerId?: number;
 }
 
 /**
