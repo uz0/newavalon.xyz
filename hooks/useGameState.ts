@@ -20,12 +20,13 @@ const getWebSocketURL = () => {
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
   const hostname = window.location.hostname || 'localhost';
   // When deployed, the WebSocket server runs on the same host and default port (443 for wss, 80 for ws).
-  // For local dev, Vite's proxy will handle forwarding, but the server is on 8080.
-  // A robust solution is to use the host and let the browser/proxy figure out the port.
-  // In production (like on Render), the port must be omitted.
+  // For local dev, you can point to a local server or a remote one like ngrok.
   if (window.location.port && window.location.port !== '80' && window.location.port !== '443' && window.location.hostname === 'localhost') {
-    return `${protocol}://${hostname}:8080`;
+    // Point to ngrok for remote testing from a local client
+    return 'wss://platinocyanic-unsceptically-belia.ngrok-free.dev';
+    // return `${protocol}://${hostname}:8080`; // Or point to your local server
   }
+  // For production (including when hosted on ngrok), it connects to the same host it's served from.
   return `${protocol}://${hostname}`;
 };
 
