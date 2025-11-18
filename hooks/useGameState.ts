@@ -13,23 +13,32 @@ const MAX_PLAYERS = 4;
 const GRID_MAX_SIZE = 7;
 
 /**
- * Constructs the WebSocket URL based on the window's current location.
+ * Constructs the WebSocket URL based on the window's current location,
+ * prioritizing a custom URL saved in localStorage.
  * @returns {string} The WebSocket server URL.
  */
 const getWebSocketURL = () => {
+  // 1. Check for a user-defined custom URL.
+  const customUrl = localStorage.getItem('custom_ws_url');
+  if (customUrl && customUrl.trim() !== '') {
+    console.log(`Using custom WebSocket URL: ${customUrl}`);
+    return customUrl.trim();
+  }
+
+  // 2. Fallback to default logic.
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
   const hostname = window.location.hostname || 'localhost';
   // When deployed, the WebSocket server runs on the same host and default port (443 for wss, 80 for ws).
-  // For local dev, Vite's proxy will handle forwarding, but the server is on 8080.
-  // A robust solution is to use the host and let the browser/proxy figure out the port.
-  // In production (like on Render), the port must be omitted.
+  // For local dev, you can point to a local server or a remote one like ngrok.
   if (window.location.port && window.location.port !== '80' && window.location.port !== '443' && window.location.hostname === 'localhost') {
-    return `${protocol}://${hostname}:8080`;
+    // Point to ngrok for remote testing from a local client
+    return 'wss://platinocyanic-unsceptically-belia.ngrok-free.dev';
+    // return `${protocol}://${hostname}:8080`; // Or point to your local server
   }
+  // For production (including when hosted on ngrok), it connects to the same host it's served from.
   return `${protocol}://${hostname}`;
 };
 
-const WS_URL = getWebSocketURL();
 
 /**
  * Represents the current status of the WebSocket connection.
@@ -269,6 +278,8 @@ export const useGameState = () => {
   const connectWebSocket = useCallback(() => {
     if (ws.current && ws.current.readyState !== WebSocket.CLOSED) return;
 
+    const WS_URL = getWebSocketURL(); // Get the latest URL each time we connect.
+
     try {
       ws.current = new WebSocket(WS_URL);
     } catch (error) {
@@ -337,6 +348,14 @@ export const useGameState = () => {
 
     ws.current.onerror = (event) => console.error('WebSocket error event:', event);
   }, [setGameState, createInitialState]);
+
+  const forceReconnect = useCallback(() => {
+    if (ws.current) {
+        console.log('Forcing WebSocket reconnection...');
+        // The onclose handler will automatically trigger the reconnect logic.
+        ws.current.close();
+    }
+  }, []);
 
   /**
    * Sends a request to the server to join an existing game, including a reconnection token if available.
@@ -1157,5 +1176,6 @@ export const useGameState = () => {
     removeRevealedStatus,
     resetGame,
     toggleActiveTurnPlayer,
+    forceReconnect,
   };
 };

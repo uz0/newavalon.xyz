@@ -14,6 +14,7 @@ import { ReadyCheckModal } from './components/ReadyCheckModal';
 import { CardDetailModal } from './components/CardDetailModal';
 import { RevealRequestModal } from './components/RevealRequestModal';
 import { DeckBuilderModal } from './components/DeckBuilderModal';
+import { SettingsModal } from './components/SettingsModal';
 import { useGameState } from './hooks/useGameState';
 import type { Player, Card, DragItem, DropTarget, PlayerColor, CardStatus, CustomDeckFile } from './types';
 import { DeckType, GameMode } from './types';
@@ -179,11 +180,13 @@ export default function App() {
     removeRevealedStatus,
     resetGame,
     toggleActiveTurnPlayer,
+    forceReconnect,
   } = useGameState();
 
   // State for managing UI modals.
   const [isJoinModalOpen, setJoinModalOpen] = useState(false);
   const [isDeckBuilderOpen, setDeckBuilderOpen] = useState(false);
+  const [isSettingsModalOpen, setSettingsModalOpen] = useState(false);
   const [isTokensModalOpen, setTokensModalOpen] = useState(false);
   const [tokensModalAnchor, setTokensModalAnchor] = useState<{ top: number; left: number } | null>(null);
   const [isTeamAssignOpen, setTeamAssignOpen] = useState(false);
@@ -266,6 +269,16 @@ export default function App() {
   const handleOpenJoinModal = () => {
     requestGamesList();
     setJoinModalOpen(true);
+  };
+
+  /**
+   * Handles saving the server settings and triggering a reconnection.
+   * @param {string} url The new WebSocket server URL.
+   */
+  const handleSaveSettings = (url: string) => {
+    localStorage.setItem('custom_ws_url', url.trim());
+    setSettingsModalOpen(false);
+    forceReconnect();
   };
 
   /**
@@ -675,9 +688,21 @@ export default function App() {
         <div className="text-center p-4 flex flex-col items-center">
           <h1 className="text-5xl font-bold mb-12">New Avalon: Skirmish</h1>
           <div className="flex flex-col space-y-4 w-64">
-            <button onClick={handleCreateGame} className={buttonClass}>
-              Start Game
-            </button>
+            <div className="flex items-center space-x-2">
+                <button onClick={handleCreateGame} className={`${buttonClass} flex-grow`}>
+                  Start Game
+                </button>
+                <button 
+                  onClick={() => setSettingsModalOpen(true)} 
+                  className="bg-gray-600 hover:bg-gray-700 text-white font-bold p-3 rounded-lg transition-colors aspect-square"
+                  title="Settings"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                </button>
+            </div>
             <button onClick={handleOpenJoinModal} className={buttonClass}>
               Join Game
             </button>
@@ -715,6 +740,11 @@ export default function App() {
             isOpen={isDeckBuilderOpen}
             onClose={() => setDeckBuilderOpen(false)}
             setViewingCard={setViewingCard}
+          />
+           <SettingsModal
+            isOpen={isSettingsModalOpen}
+            onClose={() => setSettingsModalOpen(false)}
+            onSave={handleSaveSettings}
           />
           {viewingCard && (
             <CardDetailModal
