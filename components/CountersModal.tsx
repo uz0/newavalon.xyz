@@ -1,3 +1,4 @@
+
 /**
  * @file Renders a modal displaying available counters that can be dragged onto cards.
  */
@@ -6,6 +7,7 @@ import React, { useState } from 'react';
 import type { DragItem, Card as CardType } from '../types';
 import { AVAILABLE_COUNTERS, STATUS_ICONS, STATUS_DESCRIPTIONS } from '../constants';
 import { Tooltip, CardTooltipContent } from './Tooltip';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const COUNTER_BG_URL = 'https://res.cloudinary.com/dxxh6meej/image/upload/v1763653192/background_counter_socvss.png';
 
@@ -30,6 +32,7 @@ interface CountersModalProps {
  * @returns {React.ReactElement | null} The rendered modal or null if not open.
  */
 export const CountersModal: React.FC<CountersModalProps> = ({ isOpen, onClose, setDraggedItem, canInteract, anchorEl, imageRefreshVersion, onCounterMouseDown, cursorStack }) => {
+  const { getCounterTranslation } = useLanguage();
   // State to hold the card object constructed for the tooltip
   const [tooltipCard, setTooltipCard] = useState<CardType | null>(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
@@ -55,17 +58,20 @@ export const CountersModal: React.FC<CountersModalProps> = ({ isOpen, onClose, s
   // Handler for holding right click
   const handleMouseDown = (e: React.MouseEvent, type: string, label: string) => {
       if (e.button === 2) { // Right click
+          // Fetch localized name/desc
+          const translated = getCounterTranslation(type);
+          const displayLabel = translated ? translated.name : label;
+          const displayDesc = translated ? translated.description : (STATUS_DESCRIPTIONS[type] || '');
+
           // Construct a temporary card object to reuse the standard tooltip component.
-          // We map the description to 'ability' to reuse the font styling.
-          // We clear 'types' to avoid showing "Counter".
           const dummyCard: CardType = {
               id: `tooltip_${type}`,
               deck: 'counter',
-              name: label,
+              name: displayLabel,
               imageUrl: '',
               fallbackImage: '',
               power: 0,
-              ability: STATUS_DESCRIPTIONS[type] || '',
+              ability: displayDesc,
               types: [], 
               statuses: [] 
           };
@@ -132,12 +138,16 @@ export const CountersModal: React.FC<CountersModalProps> = ({ isOpen, onClose, s
               {AVAILABLE_COUNTERS.map((counter) => {
                 const iconUrl = getIcon(counter.type);
                 const isPower = counter.type.startsWith('Power');
+                
+                // Get localized label for the button (mainly for power +/- if text is used)
+                const translated = getCounterTranslation(counter.type);
+                const displayLabel = translated ? translated.name : counter.label;
 
                 return (
                   <button
                     key={counter.type}
                     onContextMenu={(e) => e.preventDefault()}
-                    onMouseDown={(e) => handleMouseDown(e, counter.type, counter.label)}
+                    onMouseDown={(e) => handleMouseDown(e, counter.type, displayLabel)}
                     onMouseUp={handleMouseUp}
                     onMouseMove={handleMouseMove}
                     className={`w-12 h-12 rounded-full border-white flex items-center justify-center shadow-lg mx-auto relative select-none ${canInteract ? 'cursor-pointer hover:ring-2 ring-indigo-400' : 'cursor-not-allowed'}`}
@@ -149,10 +159,10 @@ export const CountersModal: React.FC<CountersModalProps> = ({ isOpen, onClose, s
                     }}
                   >
                      {iconUrl ? (
-                         <img src={iconUrl} alt={counter.label} className="w-full h-full object-contain p-1 pointer-events-none" />
+                         <img src={iconUrl} alt={displayLabel} className="w-full h-full object-contain p-1 pointer-events-none" />
                      ) : (
                           <span className={`font-bold text-white pointer-events-none ${isPower ? 'text-sm' : 'text-lg'}`} style={{ textShadow: '0 0 2px black' }}>
-                              {isPower ? counter.label : counter.type.charAt(0)}
+                              {isPower ? displayLabel : counter.type.charAt(0)}
                           </span>
                      )}
                   </button>

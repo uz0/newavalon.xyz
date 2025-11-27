@@ -1,7 +1,11 @@
+
 /**
  * @file Renders a modal for application settings.
  */
 import React, { useState, useEffect } from 'react';
+import { useLanguage } from '../contexts/LanguageContext';
+import { LANGUAGE_NAMES } from '../locales';
+import { LanguageCode } from '../locales/types';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -11,23 +15,19 @@ interface SettingsModalProps {
 
 /**
  * A modal that allows users to configure application settings, such as the
- * WebSocket server address.
- * @param {SettingsModalProps} props The properties for the component.
- * @returns {React.ReactElement | null} The rendered modal or null if not open.
+ * WebSocket server address and Language.
  */
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onSave }) => {
+  const { language, setLanguage, t } = useLanguage();
   const [serverUrl, setServerUrl] = useState('');
   const [isListMode, setIsListMode] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
-      // Load the currently saved custom URL from localStorage when the modal opens.
       const savedUrl = localStorage.getItem('custom_ws_url') || '';
       setServerUrl(savedUrl);
       
-      // Load UI mode
       const savedListMode = localStorage.getItem('ui_list_mode');
-      // Default to true if not set, otherwise parse 'true'/'false' string
       setIsListMode(savedListMode === null ? true : savedListMode === 'true');
     }
   }, [isOpen]);
@@ -36,30 +36,38 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
   
   const handleSave = () => {
     localStorage.setItem('ui_list_mode', String(isListMode));
-    // Dispatch a custom event so App.tsx can listen for the change immediately without reload if we wanted,
-    // but for now, App.tsx reads this on render or we can force a reload/update.
-    // Since App.tsx passes onSave which calls forceReconnect, we might want to handle UI updates there too.
-    // For simplicity, we rely on the parent's behavior, but we save the UI preference here.
-    
-    // We can also manually trigger a storage event for the current window if needed, 
-    // but ideally App.tsx should pass a setter or we reload. 
-    // Given the current structure, `onSave` triggers a reconnect. We will let App handle the URL, 
-    // but the UI mode change might require a page refresh if not lifted to state.
-    // To ensure immediate update, we can dispatch an event.
     window.dispatchEvent(new Event('storage'));
-    
     onSave(serverUrl);
   };
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
       <div className="bg-gray-800 rounded-lg p-8 shadow-xl w-full max-w-xl">
-        <h2 className="text-2xl font-bold mb-6">Settings</h2>
+        <h2 className="text-2xl font-bold mb-6">{t('settings')}</h2>
         
         <div className="space-y-6">
+            {/* Language Selector */}
+            <div>
+                <label htmlFor="language-select" className="block text-sm font-medium text-gray-300 mb-1">
+                    {t('language')}
+                </label>
+                <select
+                    id="language-select"
+                    value={'en'} // Locked to English
+                    onChange={(e) => setLanguage(e.target.value as LanguageCode)}
+                    disabled={true}
+                    className="w-full bg-gray-700 border border-gray-600 text-white font-sans rounded-lg p-2 focus:ring-indigo-500 focus:border-indigo-500 opacity-60 cursor-not-allowed"
+                    title="Language selection is currently disabled."
+                >
+                    {Object.entries(LANGUAGE_NAMES).map(([code, name]) => (
+                        <option key={code} value={code}>{name}</option>
+                    ))}
+                </select>
+            </div>
+
             <div>
                 <label htmlFor="server-url" className="block text-sm font-medium text-gray-300 mb-1">
-                    Server Address
+                    {t('serverAddress')}
                 </label>
                 <input
                     id="server-url"
@@ -70,16 +78,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
                     className="w-full bg-gray-700 border border-gray-600 text-white font-mono rounded-lg p-2 focus:ring-indigo-500 focus:border-indigo-500"
                     onKeyUp={(e) => e.key === 'Enter' && handleSave()}
                 />
-                 <p className="text-xs text-gray-500 mt-1">
-                    Enter the full WebSocket address for the server. Leave blank to use the default.
-                </p>
             </div>
 
             <div className="flex items-center justify-between p-4 bg-gray-700 rounded-lg">
                 <div>
                     <h3 className="text-white font-bold">List Mode Interface</h3>
                     <p className="text-xs text-gray-400">
-                        In List Mode, your panel occupies the full left side of the screen, and cards in hand are shown as a list.
+                        Optimized layout for desktop.
                     </p>
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer">
@@ -96,13 +101,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
 
         <div className="flex justify-end mt-8 space-x-3">
           <button type="button" onClick={onClose} className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded">
-            Cancel
+            {t('cancel')}
           </button>
            <button
                 onClick={handleSave}
                 className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded transition-colors"
             >
-                Save & Apply
+                {t('saveApply')}
             </button>
         </div>
       </div>

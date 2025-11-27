@@ -1,3 +1,4 @@
+
 /**
  * @file Renders a modal to view the contents of a player's discard pile or deck.
  */
@@ -17,7 +18,7 @@ interface DiscardModalProps {
   cards: CardType[];
   setDraggedItem: (item: DragItem | null) => void;
   onCardContextMenu?: (e: React.MouseEvent, cardIndex: number) => void;
-  onCardDoubleClick: (cardIndex: number) => void;
+  onCardDoubleClick?: (cardIndex: number) => void;
   onCardClick?: (cardIndex: number) => void;
   canInteract: boolean;
   isDeckView?: boolean; // If true, the source of dragged cards is 'deck' instead of 'discard'.
@@ -96,7 +97,7 @@ export const DiscardModal: React.FC<DiscardModalProps> = ({ isOpen, onClose, tit
                 }}
                 onContextMenu={(e) => canInteract && onCardContextMenu?.(e, index)}
                 onClick={() => canInteract && onCardClick?.(index)}
-                onDoubleClick={() => canInteract && onCardDoubleClick(index)}
+                onDoubleClick={() => canInteract && onCardDoubleClick?.(index)}
                 data-interactive={canInteract}
                 className={`w-28 h-28 ${canInteract ? 'cursor-grab' : 'cursor-default'}`}
               >

@@ -14,21 +14,24 @@ import { DeckBuilderModal } from './components/DeckBuilderModal';
 import { SettingsModal } from './components/SettingsModal';
 import { RulesModal } from './components/RulesModal';
 import { ContextMenu } from './components/ContextMenu';
+import { CommandModal } from './components/CommandModal';
+import { MainMenu } from './components/MainMenu';
+import { RoundEndModal } from './components/RoundEndModal'; // NEW IMPORT
 import { useGameState } from './hooks/useGameState';
-import type { Player, Card, DragItem, ContextMenuItem, ContextMenuParams, CursorStackState, CardStatus, HighlightData, PlayerColor } from './types';
+import { useAppAbilities } from './hooks/useAppAbilities';
+import type { Player, Card, DragItem, ContextMenuItem, ContextMenuParams, CursorStackState, CardStatus, HighlightData, PlayerColor, FloatingTextData, CommandContext } from './types';
 import { DeckType, GameMode } from './types';
 import { STATUS_ICONS, STATUS_DESCRIPTIONS } from './constants';
-import { getCardAbilityAction, canActivateAbility, isLine, isAdjacent } from './utils/autoAbilities';
-import type { AbilityAction } from './utils/autoAbilities';
-import { decksData, countersDatabase } from './contentDatabase';
-import { validateTarget, calculateValidTargets, checkActionHasTargets } from './utils/targeting';
+import { canActivateAbility, AbilityAction } from './utils/autoAbilities';
+import { countersDatabase } from './contentDatabase';
+import { validateTarget, calculateValidTargets } from './utils/targeting';
+import { useLanguage } from './contexts/LanguageContext';
 
 /**
- * The main application component. It manages the overall layout, modals,
- * and interactions between different parts of the game interface.
- * @returns {React.ReactElement} The rendered application.
+ * The main application component.
  */
 export default function App() {
+  const { t } = useLanguage();
   const {
     gameState,
     localPlayerId,
@@ -80,26 +83,30 @@ export default function App() {
     forceReconnect,
     triggerHighlight,
     latestHighlight,
+    latestFloatingTexts, // Updated to handle batch array
     nextPhase,
     prevPhase,
     setPhase,
     markAbilityUsed,
+    applyGlobalEffect,
     swapCards,
     transferStatus,
     transferAllCounters,
     recoverDiscardedCard,
     resurrectDiscardedCard,
     spawnToken,
-    scoreLine
+    scoreLine,
+    confirmRoundEnd // New hook function
   } = useGameState();
 
-  // State for managing UI modals.
+  // ... (State hooks omitted, unchanged) ...
   const [isJoinModalOpen, setJoinModalOpen] = useState(false);
   const [isDeckBuilderOpen, setDeckBuilderOpen] = useState(false);
   const [isSettingsModalOpen, setSettingsModalOpen] = useState(false);
   const [isTokensModalOpen, setTokensModalOpen] = useState(false);
   const [isCountersModalOpen, setCountersModalOpen] = useState(false);
   const [isRulesModalOpen, setRulesModalOpen] = useState(false);
+  const [commandModalCard, setCommandModalCard] = useState<Card | null>(null);
   const [tokensModalAnchor, setTokensModalAnchor] = useState<{ top: number; left: number } | null>(null);
   const [countersModalAnchor, setCountersModalAnchor] = useState<{ top: number; left: number } | null>(null);
   const [isTeamAssignOpen, setTeamAssignOpen] = useState(false);
@@ -132,18 +139,64 @@ export default function App() {
   const cursorFollowerRef = useRef<HTMLDivElement>(null);
   const lastClickPos = useRef<{x: number, y: number} | null>(null);
   const [highlight, setHighlight] = useState<HighlightData | null>(null);
-  const [isAutoAbilitiesEnabled, setIsAutoAbilitiesEnabled] = useState(false);
+  const [activeFloatingTexts, setActiveFloatingTexts] = useState<FloatingTextData[]>([]); // Track floating texts
+  const [isAutoAbilitiesEnabled, setIsAutoAbilitiesEnabled] = useState(true);
   const [abilityMode, setAbilityMode] = useState<AbilityAction | null>(null);
+  const [actionQueue, setActionQueue] = useState<AbilityAction[]>([]); // Queue for command sequences
   const [validTargets, setValidTargets] = useState<{row: number, col: number}[]>([]);
   const [validHandTargets, setValidHandTargets] = useState<{playerId: number, cardIndex: number}[]>([]);
   const [noTargetOverlay, setNoTargetOverlay] = useState<{row: number, col: number} | null>(null);
+  const [commandContext, setCommandContext] = useState<CommandContext>({}); // Context for multi-step actions
   const mousePos = useRef({ x: 0, y: 0 });
   const leftPanelRef = useRef<HTMLDivElement>(null);
   const boardContainerRef = useRef<HTMLDivElement>(null);
   const [leftPanelWidth, setLeftPanelWidth] = useState<number | undefined>(undefined);
   
-  // Used to prevent click events from firing immediately after a token drop (mouseup)
   const interactionLock = useRef(false);
+
+  // Extract Ability Handlers to hook
+  const { 
+      playCommandCard,
+      handleCommandConfirm,
+      activateAbility,
+      handleLineSelection,
+      handleBoardCardClick,
+      handleEmptyCellClick,
+      handleHandCardClick,
+      handleAnnouncedCardDoubleClick
+  } = useAppAbilities({
+      gameState,
+      localPlayerId,
+      abilityMode,
+      setAbilityMode,
+      cursorStack,
+      setCursorStack,
+      setActionQueue,
+      commandContext,
+      setCommandContext,
+      setCommandModalCard,
+      setViewingDiscard,
+      setNoTargetOverlay,
+      setPlayMode,
+      interactionLock,
+      moveItem,
+      drawCard,
+      updatePlayerScore,
+      markAbilityUsed,
+      applyGlobalEffect,
+      swapCards,
+      transferStatus,
+      transferAllCounters,
+      resurrectDiscardedCard,
+      spawnToken,
+      scoreLine,
+      nextPhase,
+      modifyBoardCardPower,
+      addBoardCardStatus,
+      removeBoardCardStatus,
+      removeBoardCardStatusByOwner,
+      requestCardReveal
+  });
 
   const activePlayerCount = useMemo(() => gameState.players.filter(p => !p.isDummy && !p.isDisconnected).length, [gameState.players]);
   const isSpectator = localPlayerId === null && gameState.gameId !== null;
@@ -161,13 +214,53 @@ export default function App() {
 
   const isTargetingMode = !!abilityMode || !!cursorStack;
 
+  // --- Auto-Enter Scoring Mode on Phase Transition ---
+  useEffect(() => {
+      if (gameState.isScoringStep && isAutoAbilitiesEnabled && !abilityMode) {
+          const activePid = gameState.activeTurnPlayerId;
+          // If local player is active OR local player is controlling active Dummy
+          if (activePid !== undefined && (activePid === localPlayerId || gameState.players.find(p => p.id === activePid)?.isDummy)) {
+              // Find Last Played Card
+              let lastPlayedCoords: {row: number, col: number} | null = null;
+              
+              gameState.board.some((row, r) => {
+                  return row.some((cell, c) => {
+                      if (cell.card && cell.card.statuses?.some(s => s.type === 'LastPlayed' && s.addedByPlayerId === activePid)) {
+                          lastPlayedCoords = { row: r, col: c };
+                          return true;
+                      }
+                      return false;
+                  });
+              });
+
+              if (lastPlayedCoords) {
+                  setAbilityMode({
+                      type: 'ENTER_MODE',
+                      mode: 'SCORE_LAST_PLAYED_LINE', // Special mode
+                      sourceCoords: lastPlayedCoords,
+                      payload: {}
+                  });
+              } else {
+                  // Fallback: Allow selecting any line if no card marked (e.g. destroyed)
+                  // Or skip? For flexibility, allow selection of any line.
+                  setAbilityMode({
+                      type: 'ENTER_MODE',
+                      mode: 'SELECT_LINE_END', // Use generic line selection
+                      payload: { actionType: 'SCORE_LINE' }
+                  });
+              }
+          }
+      }
+  }, [gameState.isScoringStep, isAutoAbilitiesEnabled, gameState.activeTurnPlayerId, localPlayerId, gameState.board, abilityMode]);
+
+
+  // ... (Layout effects omitted, unchanged) ...
   useEffect(() => {
       const checkListMode = () => {
           const savedMode = localStorage.getItem('ui_list_mode');
           setIsListMode(savedMode === null ? true : savedMode === 'true');
       };
       checkListMode();
-      
       window.addEventListener('storage', checkListMode);
       return () => window.removeEventListener('storage', checkListMode);
   }, []);
@@ -177,7 +270,6 @@ export default function App() {
           setLeftPanelWidth(undefined);
           return;
       }
-
       const calculateWidth = () => {
           if (boardContainerRef.current) {
               const windowWidth = window.innerWidth;
@@ -186,24 +278,20 @@ export default function App() {
               const centeredLeftSpace = (windowWidth - boardRect.width) / 2;
               const gap = 10;
               const targetWidth = centeredLeftSpace - gap;
-              
               setLeftPanelWidth(Math.max(0, targetWidth));
           }
       };
-
       const observer = new ResizeObserver(calculateWidth);
       if (boardContainerRef.current) observer.observe(boardContainerRef.current);
       window.addEventListener('resize', calculateWidth);
       calculateWidth();
       const timer = setTimeout(calculateWidth, 100);
-
       return () => {
           observer.disconnect();
           window.removeEventListener('resize', calculateWidth);
           clearTimeout(timer);
       };
   }, [isListMode, localPlayerId, gameState.activeGridSize]);
-
 
   useLayoutEffect(() => {
       if (cursorStack && cursorFollowerRef.current && lastClickPos.current) {
@@ -215,7 +303,6 @@ export default function App() {
   useEffect(() => {
       const handleMouseMove = (e: MouseEvent) => {
           mousePos.current = { x: e.clientX, y: e.clientY };
-
           if (cursorFollowerRef.current && (cursorStack || abilityMode)) {
               cursorFollowerRef.current.style.left = `${e.clientX - 2}px`;
               cursorFollowerRef.current.style.top = `${e.clientY - 2}px`;
@@ -231,11 +318,99 @@ export default function App() {
       };
   }, [cursorStack, abilityMode]);
 
-  // Handle Global MouseUp for applying tokens or cancelling interactions
+  // ... (Action Queue Processing, mouseup handlers omitted - unchanged) ...
+  useEffect(() => {
+      if (actionQueue.length > 0 && !abilityMode && !cursorStack) {
+          const nextAction = actionQueue[0];
+          setActionQueue(prev => prev.slice(1));
+
+          // Helper to calculate count based on factor (e.g. 'Aim') dynamically
+          const calculateDynamicCount = (factor: string, ownerId: number) => {
+              let count = 0;
+              if (factor === 'Aim') {
+                  gameState.board.forEach(row => row.forEach(cell => {
+                      if (cell.card?.statuses?.some(s => s.type === 'Aim' && s.addedByPlayerId === ownerId)) {
+                          count++;
+                      }
+                  }));
+              } else if (factor === 'Exploit') {
+                  gameState.board.forEach(row => row.forEach(cell => {
+                      if (cell.card?.statuses?.some(s => s.type === 'Exploit' && s.addedByPlayerId === ownerId)) {
+                          count++;
+                      }
+                  }));
+              }
+              return count;
+          };
+
+          if (nextAction.type === 'GLOBAL_AUTO_APPLY') {
+              // 1. Cleanup Command: Move card to discard
+              if (nextAction.payload?.cleanupCommand && nextAction.sourceCard) {
+                   const card = nextAction.sourceCard;
+                   moveItem({ 
+                       card, 
+                       source: 'announced', 
+                       playerId: card.ownerId 
+                   }, { 
+                       target: 'discard', 
+                       playerId: card.ownerId 
+                   });
+              }
+              // 2. Dynamic Resource (e.g. Draw per Aim)
+              else if (nextAction.payload?.dynamicResource) {
+                  const { type, factor, ownerId } = nextAction.payload.dynamicResource;
+                  const count = calculateDynamicCount(factor, ownerId);
+                  if (type === 'draw' && count > 0) {
+                      for(let i=0; i<count; i++) drawCard(ownerId);
+                  }
+              }
+              // 3. Static Resource
+              else if (nextAction.payload?.resourceChange) {
+                  const { draw, score } = nextAction.payload.resourceChange;
+                  // Fix: Commands played by Dummies or others need correct resource application
+                  const activePlayerId = gameState.activeTurnPlayerId; 
+                  if (activePlayerId !== undefined) {
+                      if (draw) {
+                          const count = typeof draw === 'number' ? draw : 1;
+                          for(let i=0; i<count; i++) drawCard(activePlayerId);
+                      }
+                      if (score) {
+                          updatePlayerScore(activePlayerId, score);
+                      }
+                  }
+              }
+          } else if (nextAction.type === 'CREATE_STACK') {
+              // 4. Dynamic Count for Stack (e.g. Reveal per Aim)
+              let finalCount = nextAction.count || 1;
+              if (nextAction.dynamicCount) {
+                  finalCount = calculateDynamicCount(nextAction.dynamicCount.factor, nextAction.dynamicCount.ownerId);
+              }
+
+              if (finalCount > 0 && nextAction.tokenType) {
+                  setCursorStack({ 
+                      type: nextAction.tokenType, 
+                      count: finalCount, 
+                      isDragging: false, 
+                      sourceCoords: nextAction.sourceCoords,
+                      excludeOwnerId: nextAction.excludeOwnerId,
+                      onlyOpponents: nextAction.onlyOpponents,
+                      onlyFaceDown: nextAction.onlyFaceDown,
+                      isDeployAbility: nextAction.isDeployAbility,
+                      requiredTargetStatus: nextAction.requiredTargetStatus,
+                      mustBeAdjacentToSource: nextAction.mustBeAdjacentToSource,
+                      mustBeInLineWithSource: nextAction.mustBeInLineWithSource,
+                      placeAllAtOnce: nextAction.placeAllAtOnce
+                  });
+              }
+          } else {
+              setAbilityMode(nextAction);
+          }
+      }
+  }, [actionQueue, abilityMode, cursorStack, localPlayerId, drawCard, updatePlayerScore, gameState.activeTurnPlayerId, gameState.board, moveItem]);
+
   useEffect(() => {
       const handleGlobalMouseUp = (e: MouseEvent) => {
           if (!cursorStack) return;
-
           const target = document.elementFromPoint(e.clientX, e.clientY);
           
           const handCard = target?.closest('[data-hand-card]');
@@ -245,7 +420,6 @@ export default function App() {
                   const [playerIdStr, cardIndexStr] = attr.split(',');
                   const playerId = parseInt(playerIdStr, 10);
                   const cardIndex = parseInt(cardIndexStr, 10);
-                  
                   const targetPlayer = gameState.players.find(p => p.id === playerId);
                   const targetCard = targetPlayer?.hand[cardIndex];
 
@@ -256,46 +430,34 @@ export default function App() {
                           localPlayerId,
                           gameState.players
                       );
-
                       if (!isValid) return;
                       
                       if (cursorStack.type === 'Revealed' && playerId !== localPlayerId && !targetPlayer.isDummy) {
                            if (localPlayerId !== null) {
-                               requestCardReveal({ 
-                                   source: 'hand', 
-                                   ownerId: playerId, 
-                                   cardIndex 
-                               }, localPlayerId);
-                               
-                               if (cursorStack.sourceCoords) markAbilityUsed(cursorStack.sourceCoords); // Ability used is tracked at source
+                               requestCardReveal({ source: 'hand', ownerId: playerId, cardIndex }, localPlayerId);
+                               if (cursorStack.sourceCoords) markAbilityUsed(cursorStack.sourceCoords, cursorStack.isDeployAbility);
                                if (cursorStack.count > 1) {
                                    setCursorStack(prev => prev ? ({ ...prev, count: prev.count - 1 }) : null);
                                } else {
                                    setCursorStack(null);
                                }
-                               // Set lock
                                interactionLock.current = true;
                                setTimeout(() => { interactionLock.current = false; }, 300);
                            }
                            return; 
                       }
-
                        handleDrop({
                           card: { id: `stack`, deck: 'counter', name: '', imageUrl: '', fallbackImage: '', power: 0, ability: '', types: [] },
                           source: 'counter_panel',
                           statusType: cursorStack.type,
                           count: 1 
                        }, { target: 'hand', playerId, cardIndex, boardCoords: undefined }); 
-                       
-                       if (cursorStack.sourceCoords) markAbilityUsed(cursorStack.sourceCoords);
-
+                       if (cursorStack.sourceCoords) markAbilityUsed(cursorStack.sourceCoords, cursorStack.isDeployAbility);
                        if (cursorStack.count > 1) {
                            setCursorStack(prev => prev ? ({ ...prev, count: prev.count - 1 }) : null);
                        } else {
                            setCursorStack(null);
                        }
-                       
-                       // Set lock
                        interactionLock.current = true;
                        setTimeout(() => { interactionLock.current = false; }, 300);
                       return;
@@ -310,59 +472,47 @@ export default function App() {
                   const [rowStr, colStr] = coords.split(',');
                   const row = parseInt(rowStr, 10);
                   const col = parseInt(colStr, 10);
-                  
                   const targetCard = gameState.board[row][col].card;
                   
                   if (targetCard && targetCard.ownerId !== undefined) {
                       const isValid = validateTarget(
-                          { card: targetCard, ownerId: targetCard.ownerId, location: 'board' },
+                          { card: targetCard, ownerId: targetCard.ownerId, location: 'board', boardCoords: { row, col } },
                           cursorStack,
                           localPlayerId,
                           gameState.players
                       );
-
                       if (!isValid) return;
-
                       const targetPlayer = gameState.players.find(p => p.id === targetCard.ownerId);
                       if (cursorStack.type === 'Revealed' && targetCard.ownerId !== localPlayerId && !targetPlayer?.isDummy) {
                            if (localPlayerId !== null) {
-                               requestCardReveal({ 
-                                   source: 'board', 
-                                   ownerId: targetCard.ownerId, 
-                                   boardCoords: { row, col } 
-                               }, localPlayerId);
-
-                               if (cursorStack.sourceCoords) markAbilityUsed(cursorStack.sourceCoords);
+                               requestCardReveal({ source: 'board', ownerId: targetCard.ownerId, boardCoords: { row, col } }, localPlayerId);
+                               if (cursorStack.sourceCoords) markAbilityUsed(cursorStack.sourceCoords, cursorStack.isDeployAbility);
                                if (cursorStack.count > 1) {
                                    setCursorStack(prev => prev ? ({ ...prev, count: prev.count - 1 }) : null);
                                } else {
                                    setCursorStack(null);
                                }
-                               // Set lock
                                interactionLock.current = true;
                                setTimeout(() => { interactionLock.current = false; }, 300);
                            }
                            return;
                       }
                   }
-
                   if (targetCard) {
+                      const amountToDrop = cursorStack.placeAllAtOnce ? cursorStack.count : 1;
+                      
                       handleDrop({
                           card: { id: `stack`, deck: 'counter', name: '', imageUrl: '', fallbackImage: '', power: 0, ability: '', types: [] },
                           source: 'counter_panel',
                           statusType: cursorStack.type,
-                          count: 1
+                          count: amountToDrop
                       }, { target: 'board', boardCoords: { row, col }});
-                      
-                       if (cursorStack.sourceCoords) markAbilityUsed(cursorStack.sourceCoords);
-
-                      if (cursorStack.count > 1) {
-                          setCursorStack(prev => prev ? ({ ...prev, count: prev.count - 1 }) : null);
+                       if (cursorStack.sourceCoords) markAbilityUsed(cursorStack.sourceCoords, cursorStack.isDeployAbility);
+                      if (cursorStack.count > amountToDrop) {
+                          setCursorStack(prev => prev ? ({ ...prev, count: prev.count - amountToDrop }) : null);
                       } else {
                           setCursorStack(null);
                       }
-                      
-                      // Set lock to prevent click event from firing on the card underneath
                       interactionLock.current = true;
                       setTimeout(() => { interactionLock.current = false; }, 300);
                   }
@@ -382,14 +532,12 @@ export default function App() {
               }
           }
       };
-
       window.addEventListener('mouseup', handleGlobalMouseUp);
       return () => {
           window.removeEventListener('mouseup', handleGlobalMouseUp);
       };
   }, [cursorStack, handleDrop, gameState, localPlayerId, revealHandCard, requestCardReveal, markAbilityUsed]);
 
-  // New effect: Swallow clicks when interaction lock is active (Capture Phase)
   useEffect(() => {
       const handleGlobalClickCapture = (e: MouseEvent) => {
           if (interactionLock.current) {
@@ -417,13 +565,15 @@ export default function App() {
                   markAbilityUsed(abilityMode.sourceCoords, abilityMode.isDeployAbility);
               }
               if (cursorStack && cursorStack.sourceCoords) {
-                  markAbilityUsed(cursorStack.sourceCoords);
+                  markAbilityUsed(cursorStack.sourceCoords, cursorStack.isDeployAbility);
               }
-
               setCursorStack(null);
               setPlayMode(null);
               setAbilityMode(null);
               setViewingDiscard(null); 
+              setCommandModalCard(null);
+              setActionQueue([]);
+              setCommandContext({});
           }
       };
       
@@ -434,26 +584,24 @@ export default function App() {
                   markAbilityUsed(abilityMode.sourceCoords, abilityMode.isDeployAbility);
               }
               if (cursorStack && cursorStack.sourceCoords) {
-                  markAbilityUsed(cursorStack.sourceCoords);
+                  markAbilityUsed(cursorStack.sourceCoords, cursorStack.isDeployAbility);
               }
-
               setCursorStack(null);
               setPlayMode(null);
               setAbilityMode(null);
               setViewingDiscard(null);
+              setActionQueue([]);
+              setCommandContext({});
           }
       };
-
       window.addEventListener('keydown', handleKeyDown);
       window.addEventListener('contextmenu', handleRightClick); 
-      
       return () => {
           window.removeEventListener('keydown', handleKeyDown);
           window.removeEventListener('contextmenu', handleRightClick);
       }
   }, [cursorStack, playMode, abilityMode, markAbilityUsed, gameState.isGameStarted, nextPhase]);
 
-  // Calculate valid targets (Board AND Hand) when abilityMode changes or cursor stack changes
   useEffect(() => {
       let effectiveAction: AbilityAction | null = abilityMode;
       if (cursorStack && !abilityMode) {
@@ -464,14 +612,25 @@ export default function App() {
               onlyFaceDown: cursorStack.onlyFaceDown,
               onlyOpponents: cursorStack.onlyOpponents,
               targetOwnerId: cursorStack.targetOwnerId,
-              excludeOwnerId: cursorStack.excludeOwnerId
+              excludeOwnerId: cursorStack.excludeOwnerId,
+              requiredTargetStatus: cursorStack.requiredTargetStatus,
+              mustBeAdjacentToSource: cursorStack.mustBeAdjacentToSource,
+              mustBeInLineWithSource: cursorStack.mustBeInLineWithSource,
+              sourceCoords: cursorStack.sourceCoords
           };
       }
+      
+      // Determine the ACTOR for targeting validation.
+      // 1. Source Card Owner (Best)
+      // 2. Fallback to deriving from source coordinates (for Stacks)
+      // 3. Local Player (Fallback)
+      // 4. Active Turn Player (Fallback)
+      const actorId = effectiveAction?.sourceCard?.ownerId 
+          ?? (effectiveAction?.sourceCoords ? gameState.board[effectiveAction.sourceCoords.row][effectiveAction.sourceCoords.col].card?.ownerId : null)
+          ?? (localPlayerId || gameState.activeTurnPlayerId);
 
-      const boardTargets = calculateValidTargets(effectiveAction, gameState, localPlayerId);
-      
+      const boardTargets = calculateValidTargets(effectiveAction, gameState, actorId, commandContext);
       const handTargets: {playerId: number, cardIndex: number}[] = [];
-      
       if (abilityMode && abilityMode.type === 'ENTER_MODE' && abilityMode.mode === 'SELECT_TARGET') {
           if (abilityMode.payload.filter) {
               gameState.players.forEach(p => {
@@ -501,11 +660,27 @@ export default function App() {
                });
           }
       }
+      // Add SCORING Mode valid targets
+      if (abilityMode && (abilityMode.mode === 'SCORE_LAST_PLAYED_LINE' || abilityMode.mode === 'SELECT_LINE_END')) {
+          // Calculate valid cells (Row/Col)
+          const gridSize = gameState.board.length;
+          // If sourceCoords exist (Last Played), only that row/col
+          if (abilityMode.sourceCoords) {
+              for(let r=0; r<gridSize; r++) boardTargets.push({row: r, col: abilityMode.sourceCoords.col});
+              for(let c=0; c<gridSize; c++) boardTargets.push({row: abilityMode.sourceCoords.row, col: c});
+          } else {
+              // Else ALL cells are valid line selectors
+              for(let r=0; r<gridSize; r++) {
+                  for(let c=0; c<gridSize; c++) boardTargets.push({row: r, col: c});
+              }
+          }
+      }
 
       setValidTargets(boardTargets);
       setValidHandTargets(handTargets);
-  }, [abilityMode, cursorStack, gameState.board, gameState.players, localPlayerId]);
+  }, [abilityMode, cursorStack, gameState.board, gameState.players, localPlayerId, commandContext]);
 
+  // ... (Highlights and modal closing omitted) ...
   useEffect(() => {
       if (latestHighlight) {
           setHighlight(latestHighlight);
@@ -514,6 +689,20 @@ export default function App() {
       }
   }, [latestHighlight]);
 
+  // Handle Incoming Floating Text Events
+  useEffect(() => {
+      if (latestFloatingTexts && latestFloatingTexts.length > 0) {
+          const newTexts = latestFloatingTexts.map(ft => ({ ...ft, id: `float_${Date.now()}_${Math.random()}` }));
+          setActiveFloatingTexts(prev => [...prev, ...newTexts]);
+          
+          // Auto-remove after animation duration (1.5s)
+          const timer = setTimeout(() => {
+              setActiveFloatingTexts(prev => prev.filter(item => !newTexts.find(nt => nt.id === item.id)));
+          }, 1500);
+          
+          return () => clearTimeout(timer);
+      }
+  }, [latestFloatingTexts]);
 
   const closeAllModals = () => {
       setTokensModalOpen(false);
@@ -522,6 +711,7 @@ export default function App() {
       setViewingDeck(null);
       setViewingCard(null);
       setRulesModalOpen(false);
+      setCommandModalCard(null);
   };
   
   const handleStartGameSequence = () => {
@@ -577,613 +767,26 @@ export default function App() {
       });
   };
 
-  const activateAbility = (card: Card, boardCoords: { row: number, col: number }) => {
-      // Guard: Prevent triggering if already in a mode
-      if (abilityMode || cursorStack) return;
-
-      if (!isAutoAbilitiesEnabled || !gameState.isGameStarted || localPlayerId === null) return;
-      
-      if (localPlayerId !== gameState.activeTurnPlayerId || card.ownerId !== localPlayerId) return;
-
-      if (!canActivateAbility(card, gameState.currentPhase, gameState.activeTurnPlayerId!)) {
-          return;
-      }
-      
-      const action = getCardAbilityAction(card, gameState, localPlayerId, boardCoords);
-      if (action) {
-          // IMMEDIATE ACTION: Princeps Deploy (Shield Self -> Then Aim)
-          if (action.mode === 'PRINCEPS_SHIELD_THEN_AIM') {
-                // 1. Apply Shield to self immediately
-                addBoardCardStatus(boardCoords, 'Shield', localPlayerId!);
-                
-                // 2. Mark ability as used (with deploy flag)
-                markAbilityUsed(boardCoords, true);
-
-                // 3. Enter Aim Mode
-                setAbilityMode({
-                    type: 'ENTER_MODE',
-                    mode: 'SELECT_TARGET',
-                    sourceCard: card,
-                    sourceCoords: boardCoords,
-                    payload: {
-                        tokenType: 'Aim',
-                        count: 1,
-                        filter: (target: Card) => {
-                            // Legal targets: cards with 'Threat' owned by THIS player
-                            return target.statuses?.some(s => s.type === 'Threat' && s.addedByPlayerId === localPlayerId) || false;
-                        }
-                    }
-                });
-                return;
-          }
-
-          // IMMEDIATE ACTION: Walking Turret Shield
-          if (action.mode === 'WALKING_TURRET_SHIELD') {
-                addBoardCardStatus(boardCoords, 'Shield', localPlayerId!);
-                markAbilityUsed(boardCoords, action.isDeployAbility);
-                return;
-          }
-
-          // IMMEDIATE ACTION: Integrator Score (Fusion)
-          if (action.mode === 'INTEGRATOR_SCORE') {
-               const gridSize = gameState.board.length;
-               const { row, col } = boardCoords;
-               let exploits = 0;
-               
-               // Count own exploits in line
-               for(let r = 0; r < gridSize; r++) {
-                   for(let c = 0; c < gridSize; c++) {
-                       const cell = gameState.board[r][c];
-                       if ((r === row || c === col) && cell.card) {
-                            exploits += cell.card.statuses?.filter(s => s.type === 'Exploit' && s.addedByPlayerId === localPlayerId).length || 0;
-                       }
-                   }
-               }
-               if (exploits > 0) {
-                   updatePlayerScore(localPlayerId!, exploits);
-               }
-               markAbilityUsed(boardCoords, action.isDeployAbility);
-               setNoTargetOverlay(boardCoords); // Flash to confirm action
-               setTimeout(() => setNoTargetOverlay(null), 500);
-               return;
-          }
-
-          if (action.type === 'CREATE_STACK' && action.tokenType && action.count) {
-              setCursorStack({ 
-                  type: action.tokenType, 
-                  count: action.count, 
-                  isDragging: false, 
-                  sourceCoords: boardCoords,
-                  excludeOwnerId: action.excludeOwnerId,
-                  onlyOpponents: action.onlyOpponents,
-                  onlyFaceDown: action.onlyFaceDown
-              });
-              // Need to track if this stack came from a deploy ability to mark it properly on consumption
-              // However, cursorStack doesn't hold isDeployAbility.
-              // Solution: markAbilityUsed is called when stack is placed.
-              // We can pass the flag then, IF we know it came from deploy.
-              // Or just mark it now? No, if user cancels stack, ability shouldn't be used.
-              // We need to assume standard ability usage logic applies on target selection.
-              // For now, simple abilities are handled.
-              if (action.isDeployAbility) {
-                  // Mark immediately? No, user might cancel.
-                  // We need to check this on completion.
-                  // But simple stack creation via click -> ability consumed?
-                  // If I click "Threat Analyst" (Deploy: Exploit any), I get a stack.
-                  // If I cancel, I haven't used it.
-                  // So we need to pass this info.
-                  // HACK: We will mark it used when the first token is placed.
-              }
-          } else if (action.type === 'ENTER_MODE') {
-              const hasTargets = checkActionHasTargets(action, gameState, localPlayerId);
-              
-              if (!hasTargets) {
-                  if (boardCoords.row >= 0) {
-                      setNoTargetOverlay(boardCoords);
-                      // If no targets, we mark it used anyway if it's a "may" ability or mandatory?
-                      // The user requested: "After activation, even if valid targets are no... considered fulfilled".
-                      markAbilityUsed(boardCoords, action.isDeployAbility); 
-                      setTimeout(() => setNoTargetOverlay(null), 750);
-                  }
-                  return;
-              }
-              setAbilityMode(action);
-          } else if (action.type === 'OPEN_MODAL') {
-              if (action.mode === 'RETRIEVE_DEVICE') {
-                   const player = gameState.players.find(p => p.id === localPlayerId);
-                   if (player) {
-                       const hasDevices = player.discard.some(c => c.types?.includes('Device'));
-                       
-                       if (hasDevices) {
-                           setViewingDiscard({ 
-                               player, 
-                               pickConfig: { 
-                                   filterType: 'Device', 
-                                   action: 'recover'
-                               } 
-                           });
-                           if (boardCoords.row >= 0) markAbilityUsed(boardCoords, action.isDeployAbility);
-                       } else {
-                           // No target feedback
-                           if (boardCoords.row >= 0) {
-                                setNoTargetOverlay(boardCoords);
-                                markAbilityUsed(boardCoords, action.isDeployAbility);
-                                setTimeout(() => setNoTargetOverlay(null), 750);
-                           }
-                       }
-                   }
-              }
-              if (action.mode === 'IMMUNIS_RETRIEVE') {
-                   const player = gameState.players.find(p => p.id === localPlayerId);
-                   if (player) {
-                        setViewingDiscard({
-                            player,
-                            pickConfig: {
-                                filterType: 'Optimates',
-                                action: 'resurrect',
-                            }
-                        });
-                        setAbilityMode({
-                            type: 'ENTER_MODE',
-                            mode: 'IMMUNIS_RETRIEVE', 
-                            sourceCard: card,
-                            sourceCoords: boardCoords,
-                            isDeployAbility: action.isDeployAbility,
-                            payload: action.payload // Correctly pass filter payload
-                        });
-                   }
-              }
-          }
-      }
-  };
-
-  const handleLineSelection = (coords: { row: number, col: number }) => {
-      if (!abilityMode) return;
-      const { mode, sourceCard, sourceCoords, payload, isDeployAbility } = abilityMode;
-
-      if (mode === 'SELECT_LINE_START') {
-          setAbilityMode({
-              type: 'ENTER_MODE',
-              mode: 'SELECT_LINE_END',
-              sourceCard,
-              sourceCoords,
-              isDeployAbility,
-              payload: {
-                  ...payload,
-                  firstCoords: coords
-              }
-          });
-          return;
-      }
-
-      if (mode === 'SELECT_LINE_END' && payload?.firstCoords) {
-          const { row: r1, col: c1 } = payload.firstCoords;
-          const { row: r2, col: c2 } = coords;
-
-          // Check if valid line (same row or same col)
-          if (r1 !== r2 && c1 !== c2) return; // Invalid selection
-
-          const actionType = payload.actionType;
-
-          if (actionType === 'CENTURION_BUFF' && sourceCard && sourceCoords) {
-               const gridSize = gameState.board.length;
-               let startR = 0, endR = gridSize - 1;
-               let startC = 0, endC = gridSize - 1;
-
-               // Define line bounds
-               if (r1 === r2) { // Row
-                   startR = endR = r1;
-               } else { // Col
-                   startC = endC = c1;
-               }
-
-               // Apply buff
-               for(let r = startR; r <= endR; r++) {
-                   for(let c = startC; c <= endC; c++) {
-                       const targetCard = gameState.board[r][c].card;
-                       // Check: Exists, Ally (Owner or Team), Not Self
-                       if (targetCard) {
-                           const isSelf = targetCard.id === sourceCard.id;
-                           const isOwner = targetCard.ownerId === localPlayerId;
-                           // Check team
-                           const localPlayer = gameState.players.find(p => p.id === localPlayerId);
-                           const targetPlayer = gameState.players.find(p => p.id === targetCard.ownerId);
-                           const isTeammate = localPlayer?.teamId !== undefined && targetPlayer?.teamId !== undefined && localPlayer.teamId === targetPlayer.teamId;
-
-                           if (!isSelf && (isOwner || isTeammate)) {
-                               modifyBoardCardPower({row: r, col: c}, 1);
-                           }
-                       }
-                   }
-               }
-               markAbilityUsed(sourceCoords, isDeployAbility);
-          }
-          else if (actionType === 'SCORE_LINE' || !actionType) { // Assuming Mobilization or legacy uses this
-               scoreLine(r1, c1, r2, c2, localPlayerId!);
-               if (sourceCard) {
-                   moveItem({ card: sourceCard, source: 'announced', playerId: localPlayerId! }, { target: 'discard', playerId: localPlayerId! });
-               }
-          }
-
-          setTimeout(() => setAbilityMode(null), 100);
-      }
-  };
-
-  const handleBoardCardClick = (card: Card, boardCoords: { row: number, col: number }) => {
-      if (playMode) return;
-      if (cursorStack) return; 
-      if (interactionLock.current) return;
-
-      // If we are already in an ability mode (targeting), handle the interaction here
-      // and DO NOT proceed to activateAbility.
-      if (abilityMode && abilityMode.type === 'ENTER_MODE') {
-          // Explicitly block interaction with the source card if clicked to prevent re-activation
-          if (abilityMode.sourceCard && abilityMode.sourceCard.id === card.id && abilityMode.mode !== 'SELECT_LINE_START') {
-               return;
-          }
-
-          const { mode, payload, sourceCard, sourceCoords, isDeployAbility } = abilityMode;
-
-          if (mode === 'SELECT_LINE_START' || mode === 'SELECT_LINE_END') {
-              handleLineSelection(boardCoords);
-              return;
-          }
-
-          if (mode === 'SELECT_TARGET' && payload.actionType === 'DESTROY') {
-              if (payload.filter && !payload.filter(card, boardCoords.row, boardCoords.col)) {
-                  return;
-              }
-              
-              // Check for Shield first
-              const hasShield = card.statuses?.some(s => s.type === 'Shield');
-              if (hasShield) {
-                  // Remove one shield token
-                  removeBoardCardStatus(boardCoords, 'Shield');
-              } else {
-                  // Proceed with destruction
-                  moveItem({ 
-                      card, 
-                      source: 'board', 
-                      boardCoords,
-                      bypassOwnershipCheck: true 
-                  }, { target: 'discard', playerId: card.ownerId });
-              }
-              
-              if (sourceCoords && sourceCoords.row >= 0) markAbilityUsed(sourceCoords, isDeployAbility);
-              setTimeout(() => setAbilityMode(null), 100);
-              return;
-          }
-
-          if (mode === 'SELECT_TARGET' && payload.tokenType) {
-              if (payload.filter && !payload.filter(card, boardCoords.row, boardCoords.col)) {
-                  return; 
-              }
-              handleDrop({
-                  card: { id: 'dummy', deck: 'counter', name: '', imageUrl: '', fallbackImage: '', power: 0, ability: '', types: [] },
-                  source: 'counter_panel',
-                  statusType: payload.tokenType,
-                  count: payload.count || 1 
-              }, { target: 'board', boardCoords });
-              
-              if (sourceCoords && sourceCoords.row >= 0) markAbilityUsed(sourceCoords, isDeployAbility);
-              setTimeout(() => setAbilityMode(null), 100);
-              return;
-          }
-
-          if (mode === 'RIOT_PUSH' && sourceCoords && sourceCoords.row >= 0) {
-              const isAdj = Math.abs(boardCoords.row - sourceCoords.row) + Math.abs(boardCoords.col - sourceCoords.col) === 1;
-              if (!isAdj || card.ownerId === localPlayerId) return;
-
-              const dRow = boardCoords.row - sourceCoords.row;
-              const dCol = boardCoords.col - sourceCoords.col;
-              const targetRow = boardCoords.row + dRow;
-              const targetCol = boardCoords.col + dCol;
-
-              const gridSize = gameState.board.length;
-              if (targetRow < 0 || targetRow >= gridSize || targetCol < 0 || targetCol >= gridSize) return;
-              if (gameState.board[targetRow][targetCol].card !== null) return;
-
-              moveItem({ 
-                  card, 
-                  source: 'board', 
-                  boardCoords,
-                  bypassOwnershipCheck: true 
-              }, { target: 'board', boardCoords: { row: targetRow, col: targetCol } });
-
-              setAbilityMode({
-                  type: 'ENTER_MODE',
-                  mode: 'RIOT_MOVE',
-                  sourceCard: abilityMode.sourceCard,
-                  sourceCoords: abilityMode.sourceCoords,
-                  isDeployAbility: isDeployAbility,
-                  payload: {
-                       vacatedCoords: boardCoords 
-                  }
-              });
-              return;
-          }
-
-           if (mode === 'RIOT_MOVE' && sourceCoords && sourceCoords.row >= 0) {
-               if (boardCoords.row === sourceCoords.row && boardCoords.col === sourceCoords.col) {
-                   markAbilityUsed(sourceCoords, isDeployAbility);
-                   setTimeout(() => setAbilityMode(null), 100); 
-               }
-               return;
-           }
-
-           if (mode === 'SWAP_POSITIONS' && sourceCoords && sourceCoords.row >= 0) {
-               // Check if sourceCard is clicked to avoid self-swap / re-activation
-               if (sourceCard && sourceCard.id === card.id) return;
-
-               if (payload.filter && !payload.filter(card, boardCoords.row, boardCoords.col)) return;
-               
-               swapCards(sourceCoords, boardCoords);
-               markAbilityUsed(boardCoords, isDeployAbility); // Ability travels with card
-               setTimeout(() => setAbilityMode(null), 100);
-               return;
-           }
-
-           if (mode === 'TRANSFER_STATUS_SELECT' && sourceCoords && sourceCoords.row >= 0) {
-               if (sourceCard && sourceCard.id === card.id) return;
-               if (payload.filter && !payload.filter(card, boardCoords.row, boardCoords.col)) return;
-
-               if (card.statuses && card.statuses.length > 0) {
-                   transferStatus(boardCoords, sourceCoords, card.statuses[0].type);
-                   markAbilityUsed(sourceCoords, isDeployAbility);
-                   setTimeout(() => setAbilityMode(null), 100);
-               }
-               return;
-           }
-
-           if (mode === 'TRANSFER_ALL_STATUSES' && sourceCoords && sourceCoords.row >= 0) {
-               if (sourceCard && sourceCard.id === card.id) return;
-               if (payload.filter && !payload.filter(card, boardCoords.row, boardCoords.col)) return;
-
-               transferAllCounters(boardCoords, sourceCoords);
-               markAbilityUsed(sourceCoords, isDeployAbility);
-               setTimeout(() => setAbilityMode(null), 100);
-               return;
-           }
-           
-           if (mode === 'REVEAL_ENEMY') {
-               if (sourceCard && sourceCard.id === card.id) return;
-               if (payload.filter && !payload.filter(card, boardCoords.row, boardCoords.col)) return;
-               
-               setCursorStack({ 
-                   type: 'Revealed', 
-                   count: 1, 
-                   isDragging: false, 
-                   sourceCoords: sourceCoords, 
-                   targetOwnerId: card.ownerId, 
-                   onlyFaceDown: true, 
-                   onlyOpponents: true 
-               });
-               // Note: markAbilityUsed will be called by the stack placement logic
-               setTimeout(() => setAbilityMode(null), 100);
-               return;
-           }
-
-           if (mode === 'CENSOR_SWAP' && sourceCoords && sourceCoords.row >= 0) {
-               if (payload.filter && !payload.filter(card)) return;
-               // Remove specifically the Exploit token owned by local player
-               removeBoardCardStatusByOwner(boardCoords, 'Exploit', localPlayerId!);
-               addBoardCardStatus(boardCoords, 'Stun', localPlayerId!);
-               markAbilityUsed(sourceCoords, isDeployAbility);
-               setTimeout(() => setAbilityMode(null), 100);
-               return;
-           }
-
-           if (mode === 'ZEALOUS_WEAKEN' && sourceCoords && sourceCoords.row >= 0) {
-               if (payload.filter && !payload.filter(card)) return;
-               modifyBoardCardPower(boardCoords, -1);
-               markAbilityUsed(sourceCoords, isDeployAbility);
-               setTimeout(() => setAbilityMode(null), 100);
-               return;
-           }
-
-           if (mode === 'CENTURION_BUFF' && sourceCoords && sourceCoords.row >= 0) {
-               // Legacy handler - kept for safety but logic moved to SELECT_LINE_START/END
-               markAbilityUsed(sourceCoords, isDeployAbility);
-               setTimeout(() => setAbilityMode(null), 100);
-               return;
-           }
-           
-           if (mode === 'SELECT_UNIT_FOR_MOVE' && sourceCoords && sourceCoords.row >= 0) {
-               if (payload.filter && !payload.filter(card)) return;
-               
-               // Transition to Cell Selection for the picked card
-               setAbilityMode({
-                   type: 'ENTER_MODE',
-                   mode: 'SELECT_CELL',
-                   sourceCard: card, // Use the target card as the source for the move
-                   sourceCoords: boardCoords,
-                   isDeployAbility: isDeployAbility,
-                   payload: {
-                       allowSelf: false // Usually we want to move to a different cell
-                   }
-               });
-               return;
-           }
-           
-           // Catch-all: If in ability mode but clicked something else, simply do nothing (don't trigger new ability)
-           return;
-      }
-
-      // Only if NO ability mode is active, proceed to activate ability
-      if (!abilityMode && !cursorStack) {
-          activateAbility(card, boardCoords);
-      }
-  };
+  // ... (Rest of Context Menu and standard render logic unchanged) ...
+  const closeContextMenu = () => setContextMenuProps(null);
   
-  const handleHandCardClick = (player: Player, card: Card, cardIndex: number) => {
-      if (interactionLock.current) return;
-
-      if (abilityMode && abilityMode.type === 'ENTER_MODE' && abilityMode.mode === 'SELECT_TARGET') {
-          const { payload, sourceCoords, isDeployAbility } = abilityMode;
-          
-          if (payload.actionType === 'DESTROY') {
-             if (payload.filter && !payload.filter(card)) {
-                  return;
-             }
-             
-             moveItem({
-                 card,
-                 source: 'hand',
-                 playerId: player.id,
-                 cardIndex,
-                 bypassOwnershipCheck: true
-             }, { target: 'discard', playerId: player.id });
-             
-             if (sourceCoords && sourceCoords.row >= 0) markAbilityUsed(sourceCoords, isDeployAbility);
-             setTimeout(() => setAbilityMode(null), 100);
-          }
-      }
-  };
-  
-  const handleAnnouncedCardDoubleClick = (player: Player, card: Card) => {
-      if (abilityMode || cursorStack) return;
-      if (interactionLock.current) return;
-
-      if (player.id !== localPlayerId) return;
-      
-      if (!isAutoAbilitiesEnabled || !gameState.isGameStarted) return;
-      if (gameState.activeTurnPlayerId !== localPlayerId) return;
-
-      if (!canActivateAbility(card, gameState.currentPhase, gameState.activeTurnPlayerId)) return;
-
-      activateAbility(card, { row: -1, col: -1 });
-  };
-
-
-  const handleEmptyCellClick = (boardCoords: { row: number, col: number }) => {
-      if (interactionLock.current) return;
-      if (!abilityMode || abilityMode.type !== 'ENTER_MODE') return;
-
-      const { mode, sourceCoords, sourceCard, payload, isDeployAbility } = abilityMode;
-
-      if (mode === 'SELECT_LINE_START' || mode === 'SELECT_LINE_END') {
-          handleLineSelection(boardCoords);
-          return;
-      }
-
-      if (mode === 'PATROL_MOVE' && sourceCoords && sourceCard && sourceCoords.row >= 0) {
-          const isRow = boardCoords.row === sourceCoords.row;
-          const isCol = boardCoords.col === sourceCoords.col;
-          
-          if (boardCoords.row === sourceCoords.row && boardCoords.col === sourceCoords.col) {
-              setTimeout(() => setAbilityMode(null), 100);
-              return;
-          }
-
-          if (isRow || isCol) {
-               moveItem({ card: sourceCard, source: 'board', boardCoords: sourceCoords }, { target: 'board', boardCoords });
-               markAbilityUsed(boardCoords, isDeployAbility); // Mark ability used at the NEW location (destination)
-               setTimeout(() => setAbilityMode(null), 100);
-          }
-          return;
-      }
-
-      if (mode === 'RIOT_MOVE' && sourceCoords && sourceCard && payload.vacatedCoords) {
-          if (boardCoords.row === payload.vacatedCoords.row && boardCoords.col === payload.vacatedCoords.col) {
-              moveItem({ card: sourceCard, source: 'board', boardCoords: sourceCoords }, { target: 'board', boardCoords });
-              markAbilityUsed(boardCoords, isDeployAbility); // Mark ability used at the NEW location
-              setTimeout(() => setAbilityMode(null), 100);
-          }
-          return;
-      }
-      
-      if (mode === 'SPAWN_TOKEN' && sourceCoords && payload.tokenName && sourceCoords.row >= 0) {
-           const isAdj = Math.abs(boardCoords.row - sourceCoords.row) + Math.abs(boardCoords.col - sourceCoords.col) === 1;
-           if (isAdj) {
-               spawnToken(boardCoords, payload.tokenName, localPlayerId!);
-               markAbilityUsed(sourceCoords, isDeployAbility);
-               setTimeout(() => setAbilityMode(null), 100);
-           }
-           return;
-      }
-
-      if (mode === 'SELECT_CELL' && sourceCoords && sourceCard && sourceCoords.row >= 0) {
-           const isAdj = Math.abs(boardCoords.row - sourceCoords.row) + Math.abs(boardCoords.col - sourceCoords.col) === 1;
-           const isGlobal = payload.range === 'global';
-           
-           if (isAdj || isGlobal) {
-               if (payload.allowSelf && boardCoords.row === sourceCoords.row && boardCoords.col === sourceCoords.col) {
-                    // Cancel/Stay
-               } else {
-                   moveItem({ card: sourceCard, source: 'board', boardCoords: sourceCoords, bypassOwnershipCheck: true }, { target: 'board', boardCoords });
-               }
-               
-               // Mark ability used on the CARD at its NEW location
-               // This prevents infinite moves because the card at target will get abilityUsedInPhase set
-               markAbilityUsed(boardCoords, isDeployAbility);
-               
-               setTimeout(() => setAbilityMode(null), 100);
-               return;
-           }
-           return;
-      }
-
-      // IMMUNIS
-      if (mode === 'IMMUNIS_RETRIEVE' && sourceCoords && sourceCoords.row >= 0) {
-          // Step 2: Select Cell (Card is already in payload if step 1 done)
-          if (payload.selectedCardIndex !== undefined && payload.filter && payload.filter(boardCoords.row, boardCoords.col)) {
-               resurrectDiscardedCard(localPlayerId!, payload.selectedCardIndex, boardCoords);
-               markAbilityUsed(sourceCoords, isDeployAbility);
-               setTimeout(() => setAbilityMode(null), 100);
-               return;
-          }
-          
-          // Step 1: Open Modal (if not already picking cell)
-          if (payload.selectedCardIndex === undefined) {
-               return;
-          }
-      }
-  };
-
-
-  const closeContextMenu = () => {
-    setContextMenuProps(null);
-  };
-  
-  const openContextMenu = (
-    e: React.MouseEvent,
-    type: ContextMenuParams['type'],
-    data: any
-  ) => {
+  const openContextMenu = (e: React.MouseEvent, type: ContextMenuParams['type'], data: any) => {
     e.preventDefault();
-    
-    if (abilityMode || cursorStack || playMode) {
-        // Allow the event to bubble up so the global right-click handler can catch it
-        // and cancel the current mode.
-        return;
-    }
-
+    if (abilityMode || cursorStack || playMode) return;
     e.stopPropagation();
-
-    if (localPlayerId === null || !gameState.isGameStarted) return;
+    if (localPlayerId === null) return;
     setContextMenuProps({ x: e.clientX, y: e.clientY, type, data });
   };
   
     const handleDoubleClickBoardCard = (card: Card, boardCoords: { row: number, col: number }) => {
         if (abilityMode || cursorStack) return;
         if (interactionLock.current) return;
-
         const isOwner = card.ownerId === localPlayerId;
-
-        if (isOwner && card.isFaceDown) {
-            flipBoardCard(boardCoords);
-            return;
-        }
-
+        if (isOwner && card.isFaceDown) { flipBoardCard(boardCoords); return; }
         const owner = card.ownerId ? gameState.players.find(p => p.id === card.ownerId) : undefined;
         const isRevealedByRequest = card.statuses?.some(s => s.type === 'Revealed' && s.addedByPlayerId === localPlayerId);
         const isVisibleForMe = !card.isFaceDown || card.revealedTo === 'all' || (Array.isArray(card.revealedTo) && card.revealedTo.includes(localPlayerId!)) || isRevealedByRequest;
-
-        if (isVisibleForMe || isOwner) {
-            setViewingCard({ card, player: owner });
-        } else if (localPlayerId !== null) {
-            requestCardReveal({ source: 'board', ownerId: card.ownerId!, boardCoords }, localPlayerId);
-        }
+        if (isVisibleForMe || isOwner) { setViewingCard({ card, player: owner }); } else if (localPlayerId !== null) { requestCardReveal({ source: 'board', ownerId: card.ownerId!, boardCoords }, localPlayerId); }
     };
     
     const handleDoubleClickEmptyCell = (boardCoords: { row: number, col: number }) => {
@@ -1195,8 +798,15 @@ export default function App() {
     const handleDoubleClickHandCard = (player: Player, card: Card, cardIndex: number) => {
         if (abilityMode || cursorStack) return;
         if (interactionLock.current) return;
+        
+        // Update: Allow Dummies
+        if (player.id === localPlayerId || player.isDummy) {
+            if (card.deck === DeckType.Command) {
+                closeAllModals();
+                playCommandCard(card, { card, source: 'hand', playerId: player.id, cardIndex });
+                return;
+            }
 
-        if (player.id === localPlayerId) {
             closeAllModals();
             const sourceItem: DragItem = { card, source: 'hand', playerId: player.id, cardIndex };
             setPlayMode({ card, sourceItem, faceDown: false });
@@ -1205,15 +815,11 @@ export default function App() {
             const isRevealedToMe = Array.isArray(card.revealedTo) && card.revealedTo.includes(localPlayerId);
             const isRevealedByRequest = card.statuses?.some(s => s.type === 'Revealed' && s.addedByPlayerId === localPlayerId);
             const isVisible = isRevealedToAll || isRevealedToMe || isRevealedByRequest || !!player.isDummy || !!player.isDisconnected;
-
-            if (isVisible) {
-                setViewingCard({ card, player });
-            } else {
-                requestCardReveal({ source: 'hand', ownerId: player.id, cardIndex }, localPlayerId);
-            }
+            if (isVisible) { setViewingCard({ card, player }); } else { requestCardReveal({ source: 'hand', ownerId: player.id, cardIndex }, localPlayerId); }
         }
     };
 
+    // ... (handleDoubleClickPileCard, handleViewDeck, handleViewDiscard) ...
     const handleDoubleClickPileCard = (player: Player, card: Card, cardIndex: number, source: 'deck' | 'discard') => {
         if (abilityMode || cursorStack) return;
         if (interactionLock.current) return;
@@ -1221,118 +827,80 @@ export default function App() {
         moveItem(sourceItem, { target: 'hand', playerId: player.id });
     };
 
-  const handleViewDeck = (player: Player) => {
-    setViewingDiscard(null);
-    setViewingDeck(player);
-  };
-  const handleViewDiscard = (player: Player) => {
-    setViewingDeck(null);
-    setViewingDiscard({ player });
-  };
+  const handleViewDeck = (player: Player) => { setViewingDiscard(null); setViewingDeck(player); };
+  const handleViewDiscard = (player: Player) => { setViewingDeck(null); setViewingDiscard({ player }); };
   
+  // Derived state for modals to ensure synchronization with game state updates
+  const viewingDiscardPlayer = useMemo(() => {
+      if (!viewingDiscard) return null;
+      return gameState.players.find(p => p.id === viewingDiscard.player.id) || viewingDiscard.player;
+  }, [viewingDiscard, gameState.players]);
+
+  const viewingDeckPlayer = useMemo(() => {
+      if (!viewingDeck) return null;
+      return gameState.players.find(p => p.id === viewingDeck.id) || viewingDeck;
+  }, [viewingDeck, gameState.players]);
+
   const renderedContextMenu = useMemo(() => {
     if (!contextMenuProps || localPlayerId === null) return null;
-
     const { type, data, x, y } = contextMenuProps;
     let items: ContextMenuItem[] = [];
-    
     if (type === 'emptyBoardCell') {
         items.push({ label: 'Highlight Cell', onClick: () => handleTriggerHighlight({ type: 'cell', row: data.boardCoords.row, col: data.boardCoords.col }) });
         items.push({ label: 'Highlight Column', onClick: () => handleTriggerHighlight({ type: 'col', col: data.boardCoords.col }) });
         items.push({ label: 'Highlight Row', onClick: () => handleTriggerHighlight({ type: 'row', row: data.boardCoords.row }) });
-
     } else if (type === 'boardItem' || type === 'announcedCard') {
         const isBoardItem = type === 'boardItem';
         let card = isBoardItem ? gameState.board[data.boardCoords.row][data.boardCoords.col].card : data.card;
         let player = isBoardItem ? null : data.player;
-
         if (!isBoardItem && player) {
             const currentPlayer = gameState.players.find(p => p.id === player.id);
-            if (currentPlayer) {
-                player = currentPlayer;
-                card = currentPlayer.announcedCard || card;
-            }
+            if (currentPlayer) { player = currentPlayer; card = currentPlayer.announcedCard || card; }
         }
-        
-        if (!card) {
-            setContextMenuProps(null);
-            return null;
-        }
-        
+        if (!card) { setContextMenuProps(null); return null; }
         const owner = card.ownerId ? gameState.players.find(p => p.id === card.ownerId) : undefined;
         const isOwner = card.ownerId === localPlayerId;
         const isDummyCard = !!owner?.isDummy;
         const canControl = isOwner || isDummyCard;
-
         const isRevealedByRequest = card.statuses?.some(s => s.type === 'Revealed' && (s.addedByPlayerId === localPlayerId));
         const isVisible = !card.isFaceDown || card.revealedTo === 'all' || (Array.isArray(card.revealedTo) && card.revealedTo.includes(localPlayerId!)) || isRevealedByRequest;
-
-        if (isVisible || (isOwner && card.isFaceDown)) {
-            items.push({ label: 'View', isBold: true, onClick: () => setViewingCard({ card, player: owner }) });
-        }
-        
+        if (isVisible || (isOwner && card.isFaceDown)) { items.push({ label: t('view'), isBold: true, onClick: () => setViewingCard({ card, player: owner }) }); }
         if (!isBoardItem && canControl && card.deck === DeckType.Command) {
-             if (gameState.currentPhase === 1 || gameState.currentPhase === 3) {
-                 items.push({ 
-                     label: 'Play', 
-                     isBold: true, 
-                     onClick: () => {
-                         activateAbility(card, { row: -1, col: -1 }); 
-                     }
-                 });
-             }
+             items.push({ label: t('play'), isBold: true, onClick: () => { playCommandCard(card, { card, source: 'announced', playerId: player!.id }); } });
         }
-
+        // ... (Standard menu items logic remains the same, `canControl` now includes Dummies) ...
         if (isBoardItem && canControl) {
-             if (card.isFaceDown) {
-                items.push({ label: 'Flip Face Up', isBold: true, onClick: () => flipBoardCard(data.boardCoords) });
-            } else {
-                items.push({ label: 'Flip Face Down', onClick: () => flipBoardCardFaceDown(data.boardCoords) });
-            }
+             if (card.isFaceDown) { items.push({ label: t('flipUp'), isBold: true, onClick: () => flipBoardCard(data.boardCoords) }); } 
+             else { items.push({ label: t('flipDown'), onClick: () => flipBoardCardFaceDown(data.boardCoords) }); }
         }
-
-        const sourceItem: DragItem = isBoardItem
-          ? { card, source: 'board', boardCoords: data.boardCoords }
-          : { card, source: 'announced', playerId: player!.id };
-        
+        const sourceItem: DragItem = isBoardItem ? { card, source: 'board', boardCoords: data.boardCoords } : { card, source: 'announced', playerId: player!.id };
         const ownerId = card.ownerId;
         const isSpecialItem = card?.deck === DeckType.Tokens || card?.deck === 'counter';
-        
         if (isBoardItem) {
-            if (canControl && card.isFaceDown) {
-                items.push({ label: 'Reveal to All', onClick: () => revealBoardCard(data.boardCoords, 'all') });
-            }
-            if (!isOwner && !isVisible) {
-                items.push({ label: 'Request Reveal', onClick: () => requestCardReveal({ source: 'board', ownerId: card.ownerId!, boardCoords: data.boardCoords }, localPlayerId) });
-            }
+            if (canControl && card.isFaceDown) { items.push({ label: t('revealToAll'), onClick: () => revealBoardCard(data.boardCoords, 'all') }); }
+            if (!isOwner && !isVisible) { items.push({ label: t('requestReveal'), onClick: () => requestCardReveal({ source: 'board', ownerId: card.ownerId!, boardCoords: data.boardCoords }, localPlayerId) }); }
         }
-        
         if (items.length > 0) items.push({ isDivider: true });
-
         if (canControl && isVisible) {
-            items.push({ label: 'To Hand', disabled: isSpecialItem, onClick: () => moveItem(sourceItem, { target: 'hand', playerId: ownerId }) });
+            items.push({ label: t('toHand'), disabled: isSpecialItem, onClick: () => moveItem(sourceItem, { target: 'hand', playerId: ownerId }) });
             if (ownerId) {
-                const discardLabel = isSpecialItem ? 'Remove' : 'To Discard';
+                const discardLabel = isSpecialItem ? 'Remove' : t('toDiscard');
                 items.push({ label: discardLabel, onClick: () => moveItem(sourceItem, { target: 'discard', playerId: ownerId }) });
                 items.push({ label: 'To Deck Top', disabled: isSpecialItem, onClick: () => moveItem(sourceItem, { target: 'deck', playerId: ownerId, deckPosition: 'top'}) });
                 items.push({ label: 'To Deck Bottom', disabled: isSpecialItem, onClick: () => moveItem(sourceItem, { target: 'deck', playerId: ownerId, deckPosition: 'bottom'}) });
             }
         }
-        
         if (isBoardItem) {
             items.push({ isDivider: true });
             items.push({ label: 'Highlight Cell', onClick: () => handleTriggerHighlight({ type: 'cell', row: data.boardCoords.row, col: data.boardCoords.col }) });
             items.push({ label: 'Highlight Column', onClick: () => handleTriggerHighlight({ type: 'col', col: data.boardCoords.col }) });
             items.push({ label: 'Highlight Row', onClick: () => handleTriggerHighlight({ type: 'row', row: data.boardCoords.row }) });
         }
-
         if (isVisible) {
             const allStatusTypes = ['Aim', 'Exploit', 'Stun', 'Shield', 'Support', 'Threat', 'Revealed'];
             const visibleStatusItems: ContextMenuItem[] = [];
-
             allStatusTypes.forEach(status => {
                 const currentCount = card.statuses?.filter((s: CardStatus) => s.type === status).length || 0;
-                
                 if (currentCount > 0) {
                     visibleStatusItems.push({
                         type: 'statusControl',
@@ -1343,12 +911,10 @@ export default function App() {
                     });
                 }
             });
-
             if (visibleStatusItems.length > 0) {
                  if (items.length > 0 && !('isDivider' in items[items.length - 1])) items.push({ isDivider: true });
                 items.push(...visibleStatusItems);
             }
-
              if (items.length > 0 && !('isDivider' in items[items.length - 1])) items.push({ isDivider: true });
              items.push({
                 type: 'statusControl',
@@ -1358,289 +924,153 @@ export default function App() {
                 removeDisabled: false
              });
         }
-        
     } else if (type === 'token_panel_item') {
         const { card } = data;
         const sourceItem: DragItem = { card, source: 'token_panel' };
-
-        items.push({ label: 'View', isBold: true, onClick: () => setViewingCard({ card }) });
+        items.push({ label: t('view'), isBold: true, onClick: () => setViewingCard({ card }) });
         items.push({ isDivider: true });
-        items.push({ label: 'Play Face Up', isBold: true, onClick: () => {
-            closeAllModals();
-            setPlayMode({ card, sourceItem, faceDown: false });
-        }});
-        items.push({ label: 'Play Face Down', onClick: () => {
-            closeAllModals();
-            setPlayMode({ card, sourceItem, faceDown: true });
-        }});
-
+        items.push({ label: t('play'), isBold: true, onClick: () => { closeAllModals(); setPlayMode({ card, sourceItem, faceDown: false }); }});
+        items.push({ label: t('playFaceDown'), onClick: () => { closeAllModals(); setPlayMode({ card, sourceItem, faceDown: true }); }});
     } else if (['handCard', 'discardCard', 'deckCard'].includes(type)) {
         let { card, boardCoords, player, cardIndex } = data;
-        
         const currentPlayer = gameState.players.find(p => p.id === player.id);
         if (currentPlayer) {
             player = currentPlayer;
-            if (type === 'handCard') {
-                card = currentPlayer.hand[cardIndex] || card;
-            } else if (type === 'discardCard') {
-                card = currentPlayer.discard[cardIndex] || card;
-            } else if (type === 'deckCard') {
-                card = currentPlayer.deck[cardIndex] || card;
-            }
+            if (type === 'handCard') { card = currentPlayer.hand[cardIndex] || card; } 
+            else if (type === 'discardCard') { card = currentPlayer.discard[cardIndex] || card; } 
+            else if (type === 'deckCard') { card = currentPlayer.deck[cardIndex] || card; }
         }
-
         const canControl = player.id === localPlayerId || !!player.isDummy;
         const localP = gameState.players.find(p => p.id === localPlayerId);
         const isTeammate = localP?.teamId !== undefined && player.teamId === localP.teamId;
         const isRevealedToMe = card.revealedTo === 'all' || (Array.isArray(card.revealedTo) && card.revealedTo.includes(localPlayerId));
         const isRevealedByRequest = card.statuses?.some(s => s.type === 'Revealed' && s.addedByPlayerId === localPlayerId);
-        
         const isVisible = (() => {
             if (type !== 'handCard') return true;
             return player.id === localPlayerId || isTeammate || !!player.isDummy || !!player.isDisconnected || isRevealedToMe || isRevealedByRequest;
         })();
-        
         let source: DragItem['source'];
         if (type === 'handCard') source = 'hand';
         else if (type === 'discardCard') source = 'discard';
         else source = 'deck';
-
         const sourceItem: DragItem = { card, source, playerId: player?.id, cardIndex, boardCoords };
         const ownerId = card.ownerId;
         const isSpecialItem = card?.deck === DeckType.Tokens || card?.deck === 'counter';
-
         if (isVisible) {
             const owner = card.ownerId ? gameState.players.find(p => p.id === card.ownerId) : undefined;
-            items.push({ label: 'View', isBold: true, onClick: () => setViewingCard({ card, player: owner }) });
+            items.push({ label: t('view'), isBold: true, onClick: () => setViewingCard({ card, player: owner }) });
         }
-
         if (canControl) {
-            if (type === 'handCard') {
-                items.push({ label: 'Play', isBold: true, onClick: () => {
-                    closeAllModals();
-                    setPlayMode({ card, sourceItem, faceDown: false });
-                }});
-                 items.push({ label: 'Play Face Down', onClick: () => {
-                    closeAllModals();
-                    setPlayMode({ card, sourceItem, faceDown: true });
-                }});
-            } else if (isVisible && ['discardCard', 'deckCard'].includes(type)) {
-                 items.push({ label: 'Play Face Up', isBold: true, onClick: () => {
-                    closeAllModals();
-                    setPlayMode({ card, sourceItem, faceDown: false });
-                }});
-                items.push({ label: 'Play Face Down', onClick: () => {
-                    closeAllModals();
-                    setPlayMode({ card, sourceItem, faceDown: true });
-                }});
-            }
-            
-            if (items.length > 0) items.push({ isDivider: true });
-            
-            if (type === 'handCard') {
-                items.push({ label: 'Reveal to All', onClick: () => revealHandCard(player.id, cardIndex, 'all') });
-            }
-
-            if (items.length > 0 && !('isDivider' in items[items.length - 1])) items.push({ isDivider: true });
-
-            if (type === 'discardCard') {
-                items.push({ label: 'To Hand', disabled: isSpecialItem, onClick: () => moveItem(sourceItem, { target: 'hand', playerId: ownerId }) });
+            if (card.deck === DeckType.Command) {
+                 items.push({ label: t('play'), isBold: true, onClick: () => { closeAllModals(); playCommandCard(card, sourceItem); }});
             } else if (type === 'handCard') {
-                items.push({ label: 'To Discard', onClick: () => moveItem(sourceItem, { target: 'discard', playerId: ownerId }) });
+                items.push({ label: t('play'), isBold: true, onClick: () => { closeAllModals(); setPlayMode({ card, sourceItem, faceDown: false }); }});
+                 items.push({ label: t('playFaceDown'), onClick: () => { closeAllModals(); setPlayMode({ card, sourceItem, faceDown: true }); }});
+            } else if (isVisible && ['discardCard', 'deckCard'].includes(type)) {
+                 items.push({ label: t('play'), isBold: true, onClick: () => { closeAllModals(); setPlayMode({ card, sourceItem, faceDown: false }); }});
+                items.push({ label: t('playFaceDown'), onClick: () => { closeAllModals(); setPlayMode({ card, sourceItem, faceDown: true }); }});
             }
-            
+            if (items.length > 0) items.push({ isDivider: true });
+            if (type === 'handCard') { items.push({ label: t('revealToAll'), onClick: () => revealHandCard(player.id, cardIndex, 'all') }); }
+            if (items.length > 0 && !('isDivider' in items[items.length - 1])) items.push({ isDivider: true });
+            if (type === 'discardCard') { items.push({ label: t('toHand'), disabled: isSpecialItem, onClick: () => moveItem(sourceItem, { target: 'hand', playerId: ownerId }) }); } 
+            else if (type === 'handCard') { items.push({ label: t('toDiscard'), onClick: () => moveItem(sourceItem, { target: 'discard', playerId: ownerId }) }); }
             if (['handCard', 'discardCard'].includes(type) && ownerId) {
                  items.push({ label: 'To Deck Top', disabled: isSpecialItem, onClick: () => moveItem(sourceItem, { target: 'deck', playerId: ownerId, deckPosition: 'top'}) });
                  items.push({ label: 'To Deck Bottom', disabled: isSpecialItem, onClick: () => moveItem(sourceItem, { target: 'deck', playerId: ownerId, deckPosition: 'bottom'}) });
             }
              if (type === 'deckCard') {
-                 items.push({ label: 'To Hand', disabled: isSpecialItem, onClick: () => moveItem(sourceItem, { target: 'hand', playerId: player.id }) });
-                 items.push({ label: 'To Discard', onClick: () => moveItem(sourceItem, { target: 'discard', playerId: player.id }) });
+                 items.push({ label: t('toHand'), disabled: isSpecialItem, onClick: () => moveItem(sourceItem, { target: 'hand', playerId: player.id }) });
+                 items.push({ label: t('toDiscard'), onClick: () => moveItem(sourceItem, { target: 'discard', playerId: player.id }) });
              }
-
              if (type === 'handCard') {
                 const revealedCount = card.statuses?.filter((s: CardStatus) => s.type === 'Revealed').length || 0;
                 if (revealedCount > 0) {
                     if (items.length > 0 && !('isDivider' in items[items.length - 1])) items.push({ isDivider: true });
-                    items.push({
-                        type: 'statusControl',
-                        label: 'Revealed',
-                        onAdd: () => addHandCardStatus(player.id, cardIndex, 'Revealed', localPlayerId),
-                        onRemove: () => removeHandCardStatus(player.id, cardIndex, 'Revealed'),
-                        removeDisabled: false
-                    });
+                    items.push({ type: 'statusControl', label: 'Revealed', onAdd: () => addHandCardStatus(player.id, cardIndex, 'Revealed', localPlayerId), onRemove: () => removeHandCardStatus(player.id, cardIndex, 'Revealed'), removeDisabled: false });
                 }
              }
         } 
-        else if (type === 'handCard' && !isVisible) {
-             items.push({ label: 'Request Reveal', onClick: () => requestCardReveal({ source: 'hand', ownerId: player.id, cardIndex }, localPlayerId) });
-        }
-
+        else if (type === 'handCard' && !isVisible) { items.push({ label: t('requestReveal'), onClick: () => requestCardReveal({ source: 'hand', ownerId: player.id, cardIndex }, localPlayerId) }); }
     } else if (type === 'deckPile') {
         const { player } = data;
         const canControl = player.id === localPlayerId || !!player.isDummy;
         if (canControl) {
             items.push({ label: 'Draw Card', onClick: () => drawCard(player.id) });
+            // Add option to draw starting hand (6 cards)
+            items.push({ label: 'Draw Starting Hand (6)', onClick: () => { for(let i=0; i<6; i++) drawCard(player.id); } });
             items.push({ label: 'Shuffle', onClick: () => shufflePlayerDeck(player.id) });
         }
-        items.push({ label: 'View', onClick: () => handleViewDeck(player) });
+        items.push({ label: t('view'), onClick: () => handleViewDeck(player) });
     } else if (type === 'discardPile') {
         const { player } = data;
-        items.push({ label: 'View', onClick: () => handleViewDiscard(player) });
+        items.push({ label: t('view'), onClick: () => handleViewDiscard(player) });
     }
-    
     items = items.filter((item, index) => {
         if (!('isDivider' in item)) return true;
         if (index === 0 || index === items.length - 1) return false;
         if ('isDivider' in items[index-1]) return false;
         return true;
     });
-    
     return <ContextMenu x={x} y={y} items={items} onClose={closeContextMenu} />;
-  }, [gameState, localPlayerId, moveItem, handleTriggerHighlight, addBoardCardStatus, removeBoardCardStatus, modifyBoardCardPower, addAnnouncedCardStatus, removeAnnouncedCardStatus, modifyAnnouncedCardPower, addHandCardStatus, removeHandCardStatus, drawCard, shufflePlayerDeck, flipBoardCard, flipBoardCardFaceDown, revealHandCard, revealBoardCard, requestCardReveal, removeRevealedStatus, activateAbility]);
+  }, [gameState, localPlayerId, moveItem, handleTriggerHighlight, addBoardCardStatus, removeBoardCardStatus, modifyBoardCardPower, addAnnouncedCardStatus, removeAnnouncedCardStatus, modifyAnnouncedCardPower, addHandCardStatus, removeHandCardStatus, drawCard, shufflePlayerDeck, flipBoardCard, flipBoardCardFaceDown, revealHandCard, revealBoardCard, requestCardReveal, removeRevealedStatus, activateAbility, t, viewingDiscardPlayer, viewingDeckPlayer, playCommandCard]);
 
+  // ... (Effects and Modal Handlers - Unchanged) ...
   useEffect(() => {
     window.addEventListener('click', closeContextMenu);
-    
     const handleContextMenu = (e: MouseEvent) => {
-        if (!(e.target as HTMLElement).closest('[data-interactive]')) {
-             closeContextMenu();
-        }
+        if (!(e.target as HTMLElement).closest('[data-interactive]')) { closeContextMenu(); }
     };
     window.addEventListener('contextmenu', handleContextMenu);
-
     return () => {
         window.removeEventListener('click', closeContextMenu);
         window.removeEventListener('contextmenu', handleContextMenu);
     };
   }, []);
 
-  useEffect(() => {
-    if (draggedItem) {
-      closeContextMenu();
-    }
-  }, [draggedItem]);
+  useEffect(() => { if (draggedItem) { closeContextMenu(); } }, [draggedItem]);
 
   const handleOpenTokensModal = (event: React.MouseEvent<HTMLButtonElement>) => {
-    if (isTokensModalOpen) {
-      setTokensModalOpen(false);
-      setTokensModalAnchor(null);
-    } else {
-        setCountersModalOpen(false);
-        setCountersModalAnchor(null);
-      const rect = event.currentTarget.getBoundingClientRect();
-      setTokensModalAnchor({ top: rect.top, left: rect.left });
-      setTokensModalOpen(true);
-    }
+    if (isTokensModalOpen) { setTokensModalOpen(false); setTokensModalAnchor(null); } 
+    else { setCountersModalOpen(false); setCountersModalAnchor(null); const rect = event.currentTarget.getBoundingClientRect(); setTokensModalAnchor({ top: rect.top, left: rect.left }); setTokensModalOpen(true); }
   };
 
   const handleOpenCountersModal = (event: React.MouseEvent<HTMLButtonElement>) => {
-    if (isCountersModalOpen) {
-        setCountersModalOpen(false);
-        setCountersModalAnchor(null);
-    } else {
-        setTokensModalOpen(false);
-        setTokensModalAnchor(null);
-        const rect = event.currentTarget.getBoundingClientRect();
-        setCountersModalAnchor({ top: rect.top, left: rect.left });
-        setCountersModalOpen(true);
-    }
+    if (isCountersModalOpen) { setCountersModalOpen(false); setCountersModalAnchor(null); } 
+    else { setTokensModalOpen(false); setTokensModalAnchor(null); const rect = event.currentTarget.getBoundingClientRect(); setCountersModalAnchor({ top: rect.top, left: rect.left }); setCountersModalOpen(true); }
   };
 
   const handleCounterMouseDown = (type: string, e: React.MouseEvent) => {
       lastClickPos.current = { x: e.clientX, y: e.clientY };
-      
       setCursorStack(prev => {
-          if (prev && prev.type === type) {
-              return { type, count: prev.count + 1, isDragging: true, sourceCoords: prev.sourceCoords };
-          }
+          if (prev && prev.type === type) { return { type, count: prev.count + 1, isDragging: true, sourceCoords: prev.sourceCoords }; }
           return { type, count: 1, isDragging: true };
       });
   };
 
+  // ... (Render Main Menu - Unchanged) ...
   if (!isGameActive) {
-    const buttonClass = "bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-lg text-lg w-full transition-colors disabled:bg-gray-600 disabled:text-gray-400 disabled:cursor-not-allowed";
-    const socialLinkClass = "text-gray-400 hover:text-white transition-colors";
-    
     return (
-      <div className="flex items-center justify-center h-screen bg-gray-800">
-        <div className="text-center p-4 flex flex-col items-center">
-          <h1 className="text-5xl font-bold mb-12">New Avalon: Skirmish</h1>
-          <div className="flex flex-col space-y-4 w-64">
-            <div className="flex items-center space-x-2">
-                <button onClick={handleCreateGame} className={`${buttonClass} flex-grow`}>
-                  Start Game
-                </button>
-                <button 
-                  onClick={() => setSettingsModalOpen(true)} 
-                  className="bg-gray-600 hover:bg-gray-700 text-white font-bold p-3 rounded-lg transition-colors aspect-square"
-                  title="Settings"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                </button>
-            </div>
-            <button onClick={handleOpenJoinModal} className={buttonClass}>
-              Join Game
-            </button>
-             <button onClick={() => setDeckBuilderOpen(true)} className={buttonClass}>
-              Deck Building
-            </button>
-             <button disabled className={buttonClass}>
-              Story Mode
-            </button>
-             <button disabled className={buttonClass}>
-              Puzzles
-            </button>
-             <button onClick={() => setRulesModalOpen(true)} className={buttonClass}>
-              Rules & Tutorial
-            </button>
-          </div>
-           <div className="mt-16 flex items-center space-x-8">
-            <a href="https://t.me/NikitaAnahoretTriakin" target="_blank" rel="noopener noreferrer" className={socialLinkClass} title="Telegram">
-               <img src="https://upload.wikimedia.org/wikipedia/commons/5/5c/Telegram_Messenger.png" alt="Telegram" className="h-8 w-8 object-contain" />
-            </a>
-            <a href="https://discord.gg/U5zKADsZZY" target="_blank" rel="noopener noreferrer" className={socialLinkClass} title="Discord">
-               <img src="https://cdn-icons-png.flaticon.com/512/2111/2111370.png" alt="Discord" className="h-8 w-8 object-contain" />
-            </a>
-             <a href="https://www.patreon.com/c/AnchoriteComics" target="_blank" rel="noopener noreferrer" className={socialLinkClass} title="Patreon">
-                <img src="https://cdn-icons-png.flaticon.com/512/5968/5968722.png" alt="Patreon" className="h-8 w-8 object-contain" />
-            </a>
-          </div>
-          <JoinGameModal
-            isOpen={isJoinModalOpen}
-            onClose={() => setJoinModalOpen(false)}
-            onJoin={handleJoinGame}
-            games={gamesList}
-          />
-          <DeckBuilderModal 
-            isOpen={isDeckBuilderOpen}
-            onClose={() => setDeckBuilderOpen(false)}
-            setViewingCard={setViewingCard}
-          />
-           <SettingsModal
-            isOpen={isSettingsModalOpen}
-            onClose={() => setSettingsModalOpen(false)}
-            onSave={handleSaveSettings}
-          />
-          <RulesModal 
-            isOpen={isRulesModalOpen}
-            onClose={() => setRulesModalOpen(false)}
-          />
-          {viewingCard && (
-            <CardDetailModal
-              card={viewingCard.card}
-              ownerPlayer={viewingCard.player}
-              onClose={() => setViewingCard(null)}
-              statusDescriptions={STATUS_DESCRIPTIONS}
-              allPlayers={gameState.players}
-              imageRefreshVersion={imageRefreshVersion}
-            />
-          )}
-        </div>
-      </div>
+      <MainMenu 
+        handleCreateGame={handleCreateGame}
+        setSettingsModalOpen={setSettingsModalOpen}
+        handleOpenJoinModal={handleOpenJoinModal}
+        setDeckBuilderOpen={setDeckBuilderOpen}
+        setRulesModalOpen={setRulesModalOpen}
+        isJoinModalOpen={isJoinModalOpen}
+        setJoinModalOpen={setJoinModalOpen}
+        handleJoinGame={handleJoinGame}
+        gamesList={gamesList}
+        isDeckBuilderOpen={isDeckBuilderOpen}
+        setViewingCard={setViewingCard}
+        isSettingsModalOpen={isSettingsModalOpen}
+        handleSaveSettings={handleSaveSettings}
+        isRulesModalOpen={isRulesModalOpen}
+        viewingCard={viewingCard}
+        gameState={gameState}
+        imageRefreshVersion={imageRefreshVersion}
+        t={t}
+      />
     );
   }
 
@@ -1672,8 +1102,36 @@ export default function App() {
         onSetPhase={setPhase}
         isAutoAbilitiesEnabled={isAutoAbilitiesEnabled}
         onToggleAutoAbilities={setIsAutoAbilitiesEnabled}
+        isScoringStep={gameState.isScoringStep} // Pass status
+        currentRound={gameState.currentRound}
+        turnNumber={gameState.turnNumber}
       />
       
+      {/* Round End Modal */}
+      {gameState.isRoundEndModalOpen && (
+          <RoundEndModal
+              gameState={gameState}
+              onConfirm={confirmRoundEnd}
+              localPlayerId={localPlayerId}
+              onExit={exitGame}
+          />
+      )}
+      
+      {/* Command Modal */}
+      {commandModalCard && (
+          <CommandModal
+              isOpen={!!commandModalCard}
+              card={commandModalCard}
+              playerColorMap={new Map(gameState.players.map(p => [p.id, p.color])) as any}
+              onConfirm={(indices) => handleCommandConfirm(indices, commandModalCard)}
+              onCancel={() => { setCommandModalCard(null); setActionQueue([]); setCommandContext({}); }}
+          />
+      )}
+
+      {/* Render the Context Menu */}
+      {renderedContextMenu}
+
+      {/* ... (Panel Rendering - Pass down permissions properly) ... */}
       {isListMode ? (
         <div className="relative h-full w-full pt-14 overflow-hidden bg-gray-900">
             {localPlayer && (
@@ -1713,6 +1171,8 @@ export default function App() {
                         onAnnouncedCardDoubleClick={handleAnnouncedCardDoubleClick}
                         currentPhase={gameState.currentPhase}
                         disableActiveHighlights={isTargetingMode}
+                        roundWinners={gameState.roundWinners}
+                        startingPlayerId={gameState.startingPlayerId}
                      />
                 </div>
             )}
@@ -1749,6 +1209,7 @@ export default function App() {
                         validTargets={validTargets}
                         noTargetOverlay={noTargetOverlay}
                         disableActiveHighlights={isTargetingMode}
+                        activeFloatingTexts={activeFloatingTexts} // Pass floating texts
                      />
                  </div>
             </div>
@@ -1788,288 +1249,269 @@ export default function App() {
                                 onAnnouncedCardDoubleClick={handleAnnouncedCardDoubleClick}
                                 currentPhase={gameState.currentPhase}
                                 disableActiveHighlights={isTargetingMode}
+                                roundWinners={gameState.roundWinners}
+                                startingPlayerId={gameState.startingPlayerId}
                             />
                         </div>
-                    ))
-                 }
+                    ))}
             </div>
         </div>
       ) : (
-        <main className="pt-14 h-screen w-full flex items-center justify-center py-[2px] px-[2px]">
-            <GameBoard
-            board={gameState.board}
-            isGameStarted={gameState.isGameStarted}
-            activeGridSize={gameState.activeGridSize}
-            handleDrop={handleDrop}
-            draggedItem={draggedItem}
-            setDraggedItem={setDraggedItem}
-            openContextMenu={openContextMenu}
-            playMode={playMode}
-            setPlayMode={setPlayMode}
-            highlight={highlight}
-            playerColorMap={playerColorMap}
-            localPlayerId={localPlayerId}
-            onCardDoubleClick={handleDoubleClickBoardCard}
-            onEmptyCellDoubleClick={handleDoubleClickEmptyCell}
-            imageRefreshVersion={imageRefreshVersion}
-            cursorStack={cursorStack}
-            setCursorStack={setCursorStack}
-            currentPhase={gameState.currentPhase}
-            activeTurnPlayerId={gameState.activeTurnPlayerId}
-            onCardClick={handleBoardCardClick}
-            onEmptyCellClick={handleEmptyCellClick}
-            validTargets={validTargets}
-            noTargetOverlay={noTargetOverlay}
-            disableActiveHighlights={isTargetingMode}
-            />
-            
-            {gameState.players.map((player) => (
+        // Standard Mode (Absolute Positioning)
+        <>
+            {gameState.players.map(player => (
                 <PlayerPanel
-                key={player.id}
-                player={player}
-                isLocalPlayer={player.id === localPlayerId}
-                localPlayerId={localPlayerId}
-                isSpectator={isSpectator}
-                isGameStarted={gameState.isGameStarted}
-                position={player.id}
-                onNameChange={(name) => updatePlayerName(player.id, name)}
-                onColorChange={(color) => changePlayerColor(player.id, color)}
-                onScoreChange={(delta) => updatePlayerScore(player.id, delta)}
-                onDeckChange={(deckType) => changePlayerDeck(player.id, deckType)}
-                onLoadCustomDeck={(deckFile) => loadCustomDeck(player.id, deckFile)}
-                onDrawCard={() => drawCard(player.id)}
-                handleDrop={handleDrop}
-                draggedItem={draggedItem}
-                setDraggedItem={setDraggedItem}
-                openContextMenu={openContextMenu}
-                onHandCardDoubleClick={handleDoubleClickHandCard}
-                playerColorMap={playerColorMap}
-                allPlayers={gameState.players}
-                localPlayerTeamId={localPlayer?.teamId}
-                activeTurnPlayerId={gameState.activeTurnPlayerId}
-                onToggleActiveTurn={toggleActiveTurnPlayer}
-                imageRefreshVersion={imageRefreshVersion}
-                layoutMode="standard"
-                onCardClick={handleHandCardClick}
-                validHandTargets={validHandTargets}
-                onAnnouncedCardDoubleClick={handleAnnouncedCardDoubleClick}
-                currentPhase={gameState.currentPhase}
-                disableActiveHighlights={isTargetingMode}
+                    key={player.id}
+                    player={player}
+                    isLocalPlayer={player.id === localPlayerId}
+                    localPlayerId={localPlayerId}
+                    isSpectator={isSpectator}
+                    isGameStarted={gameState.isGameStarted}
+                    position={player.id}
+                    onNameChange={(name) => updatePlayerName(player.id, name)}
+                    onColorChange={(color) => changePlayerColor(player.id, color)}
+                    onScoreChange={(delta) => updatePlayerScore(player.id, delta)}
+                    onDeckChange={(deckType) => changePlayerDeck(player.id, deckType)}
+                    onLoadCustomDeck={(deckFile) => loadCustomDeck(player.id, deckFile)}
+                    onDrawCard={() => drawCard(player.id)}
+                    handleDrop={handleDrop}
+                    draggedItem={draggedItem}
+                    setDraggedItem={setDraggedItem}
+                    openContextMenu={openContextMenu}
+                    onHandCardDoubleClick={handleDoubleClickHandCard}
+                    playerColorMap={playerColorMap}
+                    allPlayers={gameState.players}
+                    localPlayerTeamId={localPlayer?.teamId}
+                    activeTurnPlayerId={gameState.activeTurnPlayerId}
+                    onToggleActiveTurn={toggleActiveTurnPlayer}
+                    imageRefreshVersion={imageRefreshVersion}
+                    layoutMode="standard"
+                    onCardClick={handleHandCardClick}
+                    validHandTargets={validHandTargets}
+                    onAnnouncedCardDoubleClick={handleAnnouncedCardDoubleClick}
+                    currentPhase={gameState.currentPhase}
+                    disableActiveHighlights={isTargetingMode}
+                    roundWinners={gameState.roundWinners}
+                    startingPlayerId={gameState.startingPlayerId}
                 />
             ))}
-        </main>
+            
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0">
+                 <div 
+                    ref={boardContainerRef}
+                    className="pointer-events-auto h-[80%] aspect-square flex items-center justify-center"
+                 >
+                     <GameBoard
+                        board={gameState.board}
+                        isGameStarted={gameState.isGameStarted}
+                        activeGridSize={gameState.activeGridSize}
+                        handleDrop={handleDrop}
+                        draggedItem={draggedItem}
+                        setDraggedItem={setDraggedItem}
+                        openContextMenu={openContextMenu}
+                        playMode={playMode}
+                        setPlayMode={setPlayMode}
+                        highlight={highlight}
+                        playerColorMap={playerColorMap}
+                        localPlayerId={localPlayerId}
+                        onCardDoubleClick={handleDoubleClickBoardCard}
+                        onEmptyCellDoubleClick={handleDoubleClickEmptyCell}
+                        imageRefreshVersion={imageRefreshVersion}
+                        cursorStack={cursorStack}
+                        setCursorStack={setCursorStack}
+                        currentPhase={gameState.currentPhase}
+                        activeTurnPlayerId={gameState.activeTurnPlayerId}
+                        onCardClick={handleBoardCardClick}
+                        onEmptyCellClick={handleEmptyCellClick}
+                        validTargets={validTargets}
+                        noTargetOverlay={noTargetOverlay}
+                        disableActiveHighlights={isTargetingMode}
+                        activeFloatingTexts={activeFloatingTexts}
+                     />
+                 </div>
+            </div>
+        </>
       )}
 
-      {(cursorStack || (abilityMode && abilityMode.payload?.tokenType)) && (
-          <div 
-            ref={cursorFollowerRef}
-            className="fixed pointer-events-none select-none z-[100000] flex items-center justify-center"
-            style={{ left: mousePos.current.x - 2, top: mousePos.current.y - 2 }}
-          >
-              {(cursorStack || abilityMode?.payload?.tokenType) && (
-                  <div className="relative w-12 h-12 rounded-full bg-gray-500 border-[3px] border-white flex items-center justify-center shadow-xl">
-                       {(() => {
-                           const type = cursorStack ? cursorStack.type : abilityMode!.payload.tokenType;
-                           const count = cursorStack ? cursorStack.count : (abilityMode?.payload?.count || 1);
-                           
-                           let iconUrl = STATUS_ICONS[type];
-                           if (iconUrl && imageRefreshVersion) iconUrl = `${iconUrl}?v=${imageRefreshVersion}`;
-                           const isPower = type.startsWith('Power');
-                           
-                           return iconUrl ? (
-                               <img src={iconUrl} alt={type} className="w-full h-full object-contain p-1" draggable="false" />
-                           ) : (
-                               <span className={`font-bold text-white ${isPower ? 'text-sm' : 'text-lg'}`} style={{ textShadow: '0 0 2px black' }}>
-                                    {isPower ? (type === 'Power+' ? '+P' : '-P') : type.charAt(0)}
-                               </span>
-                           );
-                       })()}
-                       <div className="absolute -top-2 -right-2 bg-red-600 text-white text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center border border-white">
-                           {cursorStack ? cursorStack.count : (abilityMode?.payload?.count || 1)}
-                       </div>
-                  </div>
-              )}
-          </div>
-      )}
+      <JoinGameModal 
+        isOpen={isJoinModalOpen}
+        onClose={() => setJoinModalOpen(false)}
+        onJoin={handleJoinGame}
+        games={gamesList}
+      />
 
-      {isSpectator && !isListMode && (
-        <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-black bg-opacity-70 p-4 rounded-lg z-50">
-          <p className="text-xl font-bold text-center">Spectator Mode</p>
-          <p className="text-center text-gray-300">You are watching the game.</p>
-        </div>
-      )}
+      <DiscardModal
+        isOpen={!!viewingDiscard}
+        onClose={() => setViewingDiscard(null)}
+        title={viewingDiscard?.pickConfig ? (viewingDiscard.pickConfig.action === 'recover' ? 'Recover Device' : 'Resurrect Unit') : "Discard Pile"}
+        player={viewingDiscardPlayer!}
+        cards={viewingDiscardPlayer?.discard || []}
+        setDraggedItem={setDraggedItem}
+        canInteract={!!viewingDiscard?.pickConfig || (!!viewingDiscardPlayer && (viewingDiscardPlayer.id === localPlayerId || !!viewingDiscardPlayer.isDummy))}
+        onCardContextMenu={(e, index) => {
+             if (!viewingDiscard?.pickConfig && viewingDiscardPlayer) {
+                 openContextMenu(e, 'discardCard', { card: viewingDiscardPlayer.discard[index], player: viewingDiscardPlayer, cardIndex: index });
+             }
+        }}
+        onCardClick={(index) => {
+            if (viewingDiscard?.pickConfig && viewingDiscardPlayer) {
+                const config = viewingDiscard.pickConfig;
+                const card = viewingDiscardPlayer.discard[index];
+                
+                // Filter check
+                let isValid = false;
+                if (config.filterType === 'Device') isValid = card.types?.includes('Device') || false;
+                if (config.filterType === 'Optimates') isValid = (card.types?.includes('Optimates') || card.faction === 'Optimates') && card.types?.includes('Unit') || false;
 
-      {(() => {
-          const request = gameState.revealRequests.find(r => r.toPlayerId === localPlayerId);
-          if (!request) return null;
-          const fromPlayer = gameState.players.find(p => p.id === request.fromPlayerId);
-          return fromPlayer ? (
-            <RevealRequestModal
-              fromPlayer={fromPlayer}
-              cardCount={request.cardIdentifiers.length}
-              onAccept={() => respondToRevealRequest(request.fromPlayerId, true)}
-              onDecline={() => respondToRevealRequest(request.fromPlayerId, false)}
-            />
-          ) : null;
-      })()}
-      
-      {isTeamAssignOpen && isHost && (
-        <TeamAssignmentModal
-          players={gameState.players.filter(p => !p.isDisconnected)}
-          gameMode={gameState.gameMode}
-          onCancel={() => setTeamAssignOpen(false)}
-          onConfirm={handleTeamAssignment}
-        />
-      )}
-      
-      {gameState.isReadyCheckActive && !isSpectator && localPlayer && (
-        <ReadyCheckModal
-            players={gameState.players.filter(p => !p.isDummy && !p.isDisconnected)}
-            localPlayer={localPlayer}
-            onReady={playerReady}
-            onCancel={cancelReadyCheck}
-        />
-      )}
+                if (isValid) {
+                    // Execute action
+                    if (config.action === 'recover') {
+                        recoverDiscardedCard(viewingDiscardPlayer.id, index);
+                    } else if (config.action === 'resurrect' && abilityMode && abilityMode.sourceCoords) {
+                        // Store selection in payload for second step (selecting board target)
+                        setAbilityMode(prev => prev ? ({
+                            ...prev,
+                            payload: { ...prev.payload, selectedCardIndex: index }
+                        }) : null);
+                    }
+                    setViewingDiscard(null);
+                }
+            }
+        }}
+        playerColorMap={playerColorMap}
+        localPlayerId={localPlayerId}
+        imageRefreshVersion={imageRefreshVersion}
+      />
 
-      {viewingDiscard && (() => {
-          const playerInState = gameState.players.find(p => p.id === viewingDiscard.player.id);
-          const currentCards = playerInState ? playerInState.discard : [];
-          
-          let displayedCards = currentCards;
-          let title = `${viewingDiscard.player.name}'s Discard Pile`;
+      <DiscardModal
+        isOpen={!!viewingDeck}
+        onClose={() => setViewingDeck(null)}
+        title="Deck"
+        player={viewingDeckPlayer!}
+        cards={viewingDeckPlayer?.deck || []}
+        setDraggedItem={setDraggedItem}
+        canInteract={!!viewingDeckPlayer && (viewingDeckPlayer.id === localPlayerId || !!viewingDeckPlayer.isDummy)}
+        isDeckView={true}
+        onCardContextMenu={(e, index) => viewingDeckPlayer && openContextMenu(e, 'deckCard', { card: viewingDeckPlayer.deck[index], player: viewingDeckPlayer, cardIndex: index })}
+        playerColorMap={playerColorMap}
+        localPlayerId={localPlayerId}
+        imageRefreshVersion={imageRefreshVersion}
+      />
 
-          if (viewingDiscard.pickConfig) {
-              const { filterType, action } = viewingDiscard.pickConfig;
-              
-              if (filterType === 'Device') {
-                  displayedCards = currentCards.filter(c => c.types?.includes('Device'));
-                  title += ' (Pick a Device)';
-              } else if (filterType === 'Optimates') {
-                  displayedCards = currentCards.filter(c => c.deck === DeckType.Optimates || c.faction === 'Optimates');
-                  title += ' (Pick an Optimates Unit)';
-              }
-          }
-
-          const onPick = (cardIndex: number) => {
-              const realIndex = currentCards.indexOf(displayedCards[cardIndex]);
-              if (realIndex > -1 && viewingDiscard.pickConfig) {
-                  const { action } = viewingDiscard.pickConfig;
-                  if (action === 'recover') {
-                       recoverDiscardedCard(viewingDiscard.player.id, realIndex);
-                       setViewingDiscard(null);
-                       if (abilityMode) setAbilityMode(null);
-                  } else if (action === 'resurrect') {
-                       if (abilityMode && abilityMode.mode === 'IMMUNIS_RETRIEVE') {
-                           setAbilityMode({
-                               ...abilityMode,
-                               payload: {
-                                   ...abilityMode.payload,
-                                   selectedCardIndex: realIndex,
-                               }
-                           });
-                           setViewingDiscard(null);
-                       }
-                  }
-              }
-          };
-
-          return (
-            <DiscardModal
-              isOpen={!!viewingDiscard}
-              onClose={() => {
-                  setViewingDiscard(null);
-                  // If we were in a retrieval mode, cancel it if user closes modal without picking
-                  if (abilityMode && (abilityMode.mode === 'RETRIEVE_DEVICE' || abilityMode.mode === 'IMMUNIS_RETRIEVE')) {
-                      setAbilityMode(null);
-                  }
-              }}
-              title={title}
-              player={viewingDiscard.player}
-              cards={displayedCards}
-              setDraggedItem={setDraggedItem}
-              onCardContextMenu={(e, cardIndex) => openContextMenu(e, 'discardCard', { card: displayedCards[cardIndex], player: viewingDiscard.player, cardIndex })}
-              onCardClick={(cardIndex) => {
-                  // Allow single click selection if picking
-                  if (viewingDiscard.pickConfig) {
-                      onPick(cardIndex);
-                  }
-              }}
-              onCardDoubleClick={(cardIndex) => {
-                  if (viewingDiscard.pickConfig) {
-                      // Picking also works with double click
-                      onPick(cardIndex);
-                  } else {
-                      // Standard view behavior
-                      const realIndex = currentCards.indexOf(displayedCards[cardIndex]);
-                      if (realIndex > -1) {
-                          handleDoubleClickPileCard(viewingDiscard.player, displayedCards[cardIndex], cardIndex, 'discard');
-                      }
-                  }
-              }}
-              canInteract={(localPlayerId !== null && gameState.isGameStarted && (viewingDiscard.player.id === localPlayerId || !!viewingDiscard.player.isDummy))}
-              playerColorMap={playerColorMap}
-              localPlayerId={localPlayerId}
-              imageRefreshVersion={imageRefreshVersion}
-            />
-          );
-      })()}
-
-       {viewingDeck && (() => {
-          const playerInState = gameState.players.find(p => p.id === viewingDeck.id);
-          const currentCards = playerInState ? playerInState.deck : [];
-          return (
-            <DiscardModal
-              isOpen={!!viewingDeck}
-              onClose={() => setViewingDeck(null)}
-              title={`${viewingDeck.name}'s Deck`}
-              player={viewingDeck}
-              cards={currentCards}
-              setDraggedItem={setDraggedItem}
-              onCardContextMenu={(e, cardIndex) => openContextMenu(e, 'deckCard', { card: currentCards[cardIndex], player: viewingDeck, cardIndex })}
-              onCardDoubleClick={(cardIndex) => handleDoubleClickPileCard(viewingDeck, currentCards[cardIndex], cardIndex, 'deck')}
-              canInteract={localPlayerId !== null && gameState.isGameStarted && (viewingDeck.id === localPlayerId || !!viewingDeck.isDummy)}
-              isDeckView={true}
-              playerColorMap={playerColorMap}
-              localPlayerId={localPlayerId}
-              imageRefreshVersion={imageRefreshVersion}
-            />
-          );
-      })()}
-
-       <TokensModal
+      <TokensModal 
         isOpen={isTokensModalOpen}
-        onClose={() => setTokensModalOpen(false)}
+        onClose={() => { setTokensModalOpen(false); setTokensModalAnchor(null); }}
         setDraggedItem={setDraggedItem}
         openContextMenu={openContextMenu}
-        canInteract={localPlayerId !== null && gameState.isGameStarted}
+        canInteract={!!localPlayerId}
         anchorEl={tokensModalAnchor}
         imageRefreshVersion={imageRefreshVersion}
         draggedItem={draggedItem}
       />
 
-      <CountersModal
+      <CountersModal 
         isOpen={isCountersModalOpen}
-        onClose={() => setCountersModalOpen(false)}
+        onClose={() => { setCountersModalOpen(false); setCountersModalAnchor(null); }}
         setDraggedItem={setDraggedItem}
-        canInteract={localPlayerId !== null && gameState.isGameStarted}
+        canInteract={!!localPlayerId}
         anchorEl={countersModalAnchor}
         imageRefreshVersion={imageRefreshVersion}
         onCounterMouseDown={handleCounterMouseDown}
         cursorStack={cursorStack}
       />
 
-      {viewingCard && (
-        <CardDetailModal
-          card={viewingCard.card}
-          ownerPlayer={viewingCard.player}
-          onClose={() => setViewingCard(null)}
-          statusDescriptions={STATUS_DESCRIPTIONS}
-          allPlayers={gameState.players}
-          imageRefreshVersion={imageRefreshVersion}
+      {isTeamAssignOpen && gameState.gameMode !== GameMode.FreeForAll && (
+          <TeamAssignmentModal
+              players={gameState.players}
+              gameMode={gameState.gameMode}
+              onCancel={() => setTeamAssignOpen(false)}
+              onConfirm={handleTeamAssignment}
+          />
+      )}
+
+      {gameState.isReadyCheckActive && localPlayer && (
+        <ReadyCheckModal 
+          players={gameState.players}
+          localPlayer={localPlayer}
+          onReady={playerReady}
+          onCancel={cancelReadyCheck}
         />
       )}
 
-      {renderedContextMenu}
+      {gameState.revealRequests.filter(req => req.toPlayerId === localPlayerId).map((req, index) => {
+          const fromPlayer = gameState.players.find(p => p.id === req.fromPlayerId);
+          if (!fromPlayer) return null;
+          return (
+            <RevealRequestModal 
+                key={index}
+                fromPlayer={fromPlayer}
+                cardCount={req.cardIdentifiers.length}
+                onAccept={() => respondToRevealRequest(fromPlayer.id, true)}
+                onDecline={() => respondToRevealRequest(fromPlayer.id, false)}
+            />
+          );
+      })}
+
+      {viewingCard && (
+          <CardDetailModal 
+              card={viewingCard.card}
+              ownerPlayer={viewingCard.player}
+              onClose={() => setViewingCard(null)}
+              statusDescriptions={STATUS_DESCRIPTIONS}
+              allPlayers={gameState.players}
+              imageRefreshVersion={imageRefreshVersion}
+          />
+      )}
+
+      <DeckBuilderModal
+          isOpen={isDeckBuilderOpen}
+          onClose={() => setDeckBuilderOpen(false)}
+          setViewingCard={setViewingCard}
+      />
+
+      <SettingsModal 
+          isOpen={isSettingsModalOpen}
+          onClose={() => setSettingsModalOpen(false)}
+          onSave={handleSaveSettings}
+      />
+
+      <RulesModal
+          isOpen={isRulesModalOpen}
+          onClose={() => setRulesModalOpen(false)}
+      />
+
+      <div 
+        ref={cursorFollowerRef}
+        className={`fixed pointer-events-none z-[9999] flex items-center justify-center transition-transform duration-75 ${cursorStack || abilityMode ? 'block' : 'hidden'}`}
+        style={{ transform: 'translate(5px, 5px)' }} // Offset slightly so cursor isn't blocked
+      >
+          {cursorStack && (
+              <div 
+                className="relative w-12 h-12 flex items-center justify-center"
+                style={{ 
+                    backgroundImage: 'url(https://res.cloudinary.com/dxxh6meej/image/upload/v1763653192/background_counter_socvss.png)',
+                    backgroundSize: 'contain',
+                    backgroundRepeat: 'no-repeat',
+                    backgroundPosition: 'center'
+                }}
+              >
+                  {STATUS_ICONS[cursorStack.type] ? (
+                      <img 
+                        src={STATUS_ICONS[cursorStack.type]} 
+                        alt={cursorStack.type} 
+                        className="w-8 h-8 object-contain drop-shadow-lg"
+                      />
+                  ) : (
+                      <span className="text-white font-bold text-lg drop-shadow-[0_0_2px_black]">
+                          {cursorStack.type.charAt(0)}
+                      </span>
+                  )}
+                  <div className="absolute -top-1 -right-1 bg-red-600 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center border border-white z-10">
+                      {cursorStack.count}
+                  </div>
+              </div>
+          )}
+      </div>
     </div>
   );
 }

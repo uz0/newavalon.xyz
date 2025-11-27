@@ -28,6 +28,8 @@ const clientGameMap = new Map(); // ws_client -> gameId
 const gameLogs = new Map(); // gameId -> string[]
 const gameTerminationTimers = new Map(); // gameId -> NodeJS.Timeout (Empty game timeout)
 const gameInactivityTimers = new Map(); // gameId -> NodeJS.Timeout (Idle game timeout)
+const playerDisconnectTimers = new Map(); // Key: `${gameId}-${playerId}` -> NodeJS.Timeout (Player conversion timeout)
+
 const MAX_PLAYERS = 4;
 const INACTIVITY_TIMEOUT_MS = 20 * 60 * 1000; // 20 minutes
 
@@ -211,6 +213,14 @@ const endGame = (gameId, reason) => {
         gameInactivityTimers.delete(gameId);
     }
     
+    // Clean up any pending player conversion timers for this game
+    for (const [key, timer] of playerDisconnectTimers.entries()) {
+        if (key.startsWith(`${gameId}-`)) {
+            clearTimeout(timer);
+            playerDisconnectTimers.delete(key);
+        }
+    }
+    
     // 3. Disconnect any remaining clients (spectators) in that game
     wss.clients.forEach(client => {
         if (client.gameId === gameId) {
@@ -245,6 +255,32 @@ const resetInactivityTimer = (gameId) => {
     }, INACTIVITY_TIMEOUT_MS);
 
     gameInactivityTimers.set(gameId, timerId);
+};
+
+/**
+ * Converts a disconnected player into a dummy player.
+ * @param {string} gameId The game ID.
+ * @param {number} playerId The player ID.
+ */
+const convertPlayerToDummy = (gameId, playerId) => {
+    const gameState = gameStates.get(gameId);
+    if (!gameState) return;
+
+    const player = gameState.players.find(p => p.id === playerId);
+    if (player && player.isDisconnected) {
+        logToGame(gameId, `Player ${playerId} (${player.name}) failed to reconnect and is now a Dummy.`);
+        console.log(`Converting Player ${playerId} in game ${gameId} to Dummy.`);
+        
+        player.isDummy = true;
+        player.isDisconnected = false; // Dummies are "connected" (part of game state) but not human
+        player.name = `Dummy ${player.id}`;
+        player.playerToken = null; // Prevent reconnection as this player
+
+        // Remove the timer tracking this conversion
+        playerDisconnectTimers.delete(`${gameId}-${playerId}`);
+
+        broadcastState(gameId, gameState);
+    }
 };
 
 /**
@@ -402,20 +438,19 @@ const broadcastGamesList = () => {
  * It marks the player as disconnected, leaving their slot open.
  * @param {string} gameId The ID of the game.
  * @param {number} playerId The ID of the player leaving.
+ * @param {boolean} isManualExit If true, do not schedule a dummy conversion timer.
  */
-const handlePlayerLeave = (gameId, playerId) => {
+const handlePlayerLeave = (gameId, playerId, isManualExit = false) => {
     if (!gameId || playerId === null || playerId === undefined) return;
     const numericPlayerId = Number(playerId);
     const gameState = gameStates.get(gameId);
     if (!gameState) return;
 
     let playerFound = false;
-    let playerDisconnected = false;
     const updatedPlayers = gameState.players.map(p => {
         if (p.id === numericPlayerId && !p.isDisconnected) {
             playerFound = true;
-            playerDisconnected = true;
-            logToGame(gameId, `Player ${p.name} (ID: ${numericPlayerId}) disconnected.`);
+            logToGame(gameId, `Player ${p.name} (ID: ${numericPlayerId}) disconnected${isManualExit ? ' (Manual Exit)' : ''}.`);
             return { ...p, isDisconnected: true, isReady: false };
         }
         return p;
@@ -426,6 +461,22 @@ const handlePlayerLeave = (gameId, playerId) => {
     const updatedGameState = { ...gameState, players: updatedPlayers };
     gameStates.set(gameId, updatedGameState);
     
+    // Clear existing conversion timer for this player if any
+    const timerKey = `${gameId}-${numericPlayerId}`;
+    if (playerDisconnectTimers.has(timerKey)) {
+        clearTimeout(playerDisconnectTimers.get(timerKey));
+        playerDisconnectTimers.delete(timerKey);
+    }
+
+    // If NOT a manual exit, schedule conversion to dummy in 60 seconds
+    if (!isManualExit) {
+        console.log(`Scheduling conversion to Dummy for Player ${numericPlayerId} in game ${gameId} in 60s.`);
+        const timerId = setTimeout(() => {
+            convertPlayerToDummy(gameId, numericPlayerId);
+        }, 60 * 1000); // 1 minute
+        playerDisconnectTimers.set(timerKey, timerId);
+    }
+
     // An active player is a human who is currently connected.
     const activePlayers = updatedPlayers.filter(p => !p.isDummy && !p.isDisconnected);
 
@@ -476,6 +527,14 @@ wss.on('connection', ws => {
                             cancelGameTermination(gameId);
                             playerToReconnect.isDisconnected = false;
                             
+                            // Clear pending dummy conversion timer
+                            const timerKey = `${gameId}-${playerToReconnect.id}`;
+                            if (playerDisconnectTimers.has(timerKey)) {
+                                clearTimeout(playerDisconnectTimers.get(timerKey));
+                                playerDisconnectTimers.delete(timerKey);
+                                logToGame(gameId, `Cancelled dummy conversion timer for Player ${playerToReconnect.id}.`);
+                            }
+
                             ws.playerId = playerToReconnect.id;
                             ws.send(JSON.stringify({ type: 'JOIN_SUCCESS', playerId: playerToReconnect.id, playerToken: playerToReconnect.playerToken }));
                             logToGame(gameId, `Player ${playerToReconnect.id} (${playerToReconnect.name}) reconnected.`);
@@ -493,6 +552,13 @@ wss.on('connection', ws => {
                         playerToTakeOver.isDisconnected = false;
                         playerToTakeOver.name = `Player ${playerToTakeOver.id}`;
                         playerToTakeOver.playerToken = generatePlayerToken();
+
+                        // Clear pending dummy conversion timer for the slot being taken over
+                        const timerKey = `${gameId}-${playerToTakeOver.id}`;
+                        if (playerDisconnectTimers.has(timerKey)) {
+                            clearTimeout(playerDisconnectTimers.get(timerKey));
+                            playerDisconnectTimers.delete(timerKey);
+                        }
 
                         ws.playerId = playerToTakeOver.id;
                         ws.send(JSON.stringify({ type: 'JOIN_SUCCESS', playerId: playerToTakeOver.id, playerToken: playerToTakeOver.playerToken }));
@@ -617,7 +683,8 @@ wss.on('connection', ws => {
                         endGame(gameId, 'last player left');
                     } else {
                         // Other active players remain, so just mark this one as disconnected.
-                        handlePlayerLeave(gameId, playerId);
+                        // Pass TRUE for manual exit to prevent dummy conversion timer
+                        handlePlayerLeave(gameId, playerId, true);
                     }
                     
                     clientGameMap.delete(ws);
@@ -733,6 +800,30 @@ wss.on('connection', ws => {
                     }
                     break;
                 }
+                case 'TRIGGER_FLOATING_TEXT': {
+                    const { floatingTextData } = data;
+                    if (gameState) {
+                        const message = JSON.stringify({ type: 'FLOATING_TEXT_TRIGGERED', floatingTextData });
+                        wss.clients.forEach(client => {
+                            if (client.readyState === WebSocket.OPEN && clientGameMap.get(client) === gameId) {
+                                client.send(message);
+                            }
+                        });
+                    }
+                    break;
+                }
+                case 'TRIGGER_FLOATING_TEXT_BATCH': {
+                    const { batch } = data;
+                    if (gameState) {
+                        const message = JSON.stringify({ type: 'FLOATING_TEXT_BATCH_TRIGGERED', batch });
+                        wss.clients.forEach(client => {
+                            if (client.readyState === WebSocket.OPEN && clientGameMap.get(client) === gameId) {
+                                client.send(message);
+                            }
+                        });
+                    }
+                    break;
+                }
                 default:
                     console.warn(`Received unknown message type: ${data.type}`);
             }
@@ -746,7 +837,8 @@ wss.on('connection', ws => {
         const gameId = ws.gameId;
         const playerId = ws.playerId;
         if (gameId && playerId !== undefined) {
-            handlePlayerLeave(gameId, playerId);
+            // Unexpected close: pass false for isManualExit
+            handlePlayerLeave(gameId, playerId, false);
         }
         clientGameMap.delete(ws);
     });
@@ -789,6 +881,9 @@ process.stdin.on('data', (data) => {
         gameTerminationTimers.clear();
         gameInactivityTimers.forEach(timerId => clearTimeout(timerId));
         gameInactivityTimers.clear();
+        
+        playerDisconnectTimers.forEach(timerId => clearTimeout(timerId));
+        playerDisconnectTimers.clear();
 
         console.log('All game sessions cleared. The server is ready for new games.');
     }

@@ -1,16 +1,20 @@
-import { GameState, Card } from '../types';
+import { GameState, Card, CommandContext } from '../types';
 import { AbilityAction } from './autoAbilities';
 
 /**
  * Validates if a specific target meets the constraints.
  */
 export const validateTarget = (
-    target: { card: Card; ownerId: number; location: 'hand' | 'board' },
+    target: { card: Card; ownerId: number; location: 'hand' | 'board'; boardCoords?: { row: number, col: number } },
     constraints: { 
         targetOwnerId?: number; 
         excludeOwnerId?: number; 
         onlyOpponents?: boolean; 
         onlyFaceDown?: boolean;
+        requiredTargetStatus?: string;
+        mustBeAdjacentToSource?: boolean;
+        mustBeInLineWithSource?: boolean;
+        sourceCoords?: { row: number, col: number };
     },
     userPlayerId: number | null,
     players: GameState['players']
@@ -47,6 +51,25 @@ export const validateTarget = (
         }
     }
 
+    // 5. Required Status
+    if (constraints.requiredTargetStatus) {
+        if (!card.statuses?.some(s => s.type === constraints.requiredTargetStatus)) return false;
+    }
+
+    // 6. Adjacency
+    if (constraints.mustBeAdjacentToSource && constraints.sourceCoords && target.boardCoords) {
+         const { row: r1, col: c1 } = constraints.sourceCoords;
+         const { row: r2, col: c2 } = target.boardCoords;
+         if (Math.abs(r1 - r2) + Math.abs(c1 - c2) !== 1) return false;
+    }
+
+    // 7. Line Check
+    if (constraints.mustBeInLineWithSource && constraints.sourceCoords && target.boardCoords) {
+         const { row: r1, col: c1 } = constraints.sourceCoords;
+         const { row: r2, col: c2 } = target.boardCoords;
+         if (r1 !== r2 && c1 !== c2) return false;
+    }
+
     return true;
 };
 
@@ -56,7 +79,8 @@ export const validateTarget = (
 export const calculateValidTargets = (
     action: AbilityAction | null, 
     currentGameState: GameState, 
-    playerId: number | null
+    actorId: number | null, // Renamed from playerId to clarify intent (source card owner)
+    commandContext?: CommandContext
 ): {row: number, col: number}[] => {
     if (!action || (action.type !== 'ENTER_MODE' && action.type !== 'CREATE_STACK')) {
         return [];
@@ -72,7 +96,11 @@ export const calculateValidTargets = (
               targetOwnerId: action.targetOwnerId,
               excludeOwnerId: action.excludeOwnerId,
               onlyOpponents: action.onlyOpponents,
-              onlyFaceDown: action.onlyFaceDown
+              onlyFaceDown: action.onlyFaceDown,
+              requiredTargetStatus: action.requiredTargetStatus,
+              mustBeAdjacentToSource: action.mustBeAdjacentToSource,
+              mustBeInLineWithSource: action.mustBeInLineWithSource,
+              sourceCoords: action.sourceCoords
          };
          
          for(let r=0; r<gridSize; r++) {
@@ -80,9 +108,9 @@ export const calculateValidTargets = (
                  const cell = board[r][c];
                  if (cell.card) { // Tokens generally apply to existing cards
                       const isValid = validateTarget(
-                          { card: cell.card, ownerId: cell.card.ownerId || 0, location: 'board' },
+                          { card: cell.card, ownerId: cell.card.ownerId || 0, location: 'board', boardCoords: { row: r, col: c } },
                           constraints,
-                          playerId,
+                          actorId,
                           currentGameState.players
                       );
                       if (isValid) {
@@ -94,15 +122,25 @@ export const calculateValidTargets = (
          return targets;
     }
     
-    const { mode, payload, sourceCoords } = action;
+    const { mode, payload, sourceCoords, contextCheck } = action;
 
-    // 1. Generic TARGET selection (e.g. Stun, Exploit, Destroy) or Specific Modes using Filters
+    // 1. Generic TARGET selection
     if ((mode === 'SELECT_TARGET' || mode === 'CENSOR_SWAP' || mode === 'ZEALOUS_WEAKEN' || mode === 'CENTURION_BUFF' || mode === 'SELECT_UNIT_FOR_MOVE') && payload.filter) {
          for(let r=0; r<gridSize; r++) {
              for(let c=0; c<gridSize; c++) {
                  const cell = board[r][c];
-                 // Pass coordinates to filter if needed
-                 if (cell.card && payload.filter(cell.card, r, c)) {
+                 
+                 // Check basic filter
+                 let isValid = cell.card && payload.filter(cell.card, r, c);
+                 
+                 // Check context requirements (e.g. Adjacent to last move)
+                 if (isValid && contextCheck === 'ADJACENT_TO_LAST_MOVE' && commandContext?.lastMovedCardCoords) {
+                     const { row: lr, col: lc } = commandContext.lastMovedCardCoords;
+                     const isAdj = Math.abs(r - lr) + Math.abs(c - lc) === 1;
+                     if (!isAdj) isValid = false;
+                 }
+
+                 if (isValid) {
                      targets.push({row: r, col: c});
                  }
              }
@@ -138,19 +176,24 @@ export const calculateValidTargets = (
             if (nb.r >= 0 && nb.r < gridSize && nb.c >= 0 && nb.c < gridSize) {
                  const targetCard = board[nb.r][nb.c].card;
                  
-                 // Use playerId passed to function
-                 // Allow pushing stunned cards (opponents can move them)
-                 if (targetCard && targetCard.ownerId !== playerId) {
-                     // Calculate push destination
-                     const dRow = nb.r - sourceCoords.row;
-                     const dCol = nb.c - sourceCoords.col;
-                     const pushRow = nb.r + dRow;
-                     const pushCol = nb.c + dCol;
+                 // Check if opponent (Not Self AND Not Teammate)
+                 if (targetCard && targetCard.ownerId !== actorId) {
+                     const actorPlayer = currentGameState.players.find(p => p.id === actorId);
+                     const targetPlayer = currentGameState.players.find(p => p.id === targetCard.ownerId);
+                     const isTeammate = actorPlayer?.teamId !== undefined && targetPlayer?.teamId !== undefined && actorPlayer.teamId === targetPlayer.teamId;
                      
-                     // Check dest bounds and emptiness
-                     if (pushRow >= 0 && pushRow < gridSize && pushCol >= 0 && pushCol < gridSize) {
-                         if (!board[pushRow][pushCol].card) {
-                             targets.push({row: nb.r, col: nb.c});
+                     if (!isTeammate) {
+                         // Calculate push destination
+                         const dRow = nb.r - sourceCoords.row;
+                         const dCol = nb.c - sourceCoords.col;
+                         const pushRow = nb.r + dRow;
+                         const pushCol = nb.c + dCol;
+                         
+                         // Check dest bounds and emptiness
+                         if (pushRow >= 0 && pushRow < gridSize && pushCol >= 0 && pushCol < gridSize) {
+                             if (!board[pushRow][pushCol].card) {
+                                 targets.push({row: nb.r, col: nb.c});
+                             }
                          }
                      }
                  }
@@ -204,11 +247,41 @@ export const calculateValidTargets = (
                  // For Generic Select Cell (e.g. Recon Drone move, Fusion moves)
                  // Payload allowSelf controls "Stay"
                  if (mode === 'SELECT_CELL') {
-                     const isAdj = Math.abs(r - sourceCoords.row) + Math.abs(c - sourceCoords.col) === 1;
                      const isSame = r === sourceCoords.row && c === sourceCoords.col;
                      const isGlobal = payload.range === 'global';
+                     
+                     let isValidLoc = false;
+                     
+                     if (isGlobal) isValidLoc = true;
+                     else if (payload.range === 'line') isValidLoc = r === sourceCoords.row || c === sourceCoords.col;
+                     else if (payload.range === 2) {
+                         // Range 2: 1 or 2 cells away.
+                         const dRow = Math.abs(r - sourceCoords.row);
+                         const dCol = Math.abs(c - sourceCoords.col);
+                         const dist = dRow + dCol;
 
-                     if (isEmpty && (isAdj || isGlobal)) targets.push({row: r, col: c});
+                         if (dist === 1) isValidLoc = true;
+                         else if (dist === 2) {
+                             // Logic for 2 cells: must be reachable via an empty cell (or straight line 2).
+                             // BFS Depth 2 check.
+                             // Candidates for intermediate step:
+                             const inters = [];
+                             if (dRow === 2 && dCol === 0) inters.push({r: (r + sourceCoords.row)/2, c: c}); // Straight vertical
+                             else if (dRow === 0 && dCol === 2) inters.push({r: r, c: (c + sourceCoords.col)/2}); // Straight horizontal
+                             else if (dRow === 1 && dCol === 1) { // Diagonal (L-shape)
+                                 inters.push({r: r, c: sourceCoords.col});
+                                 inters.push({r: sourceCoords.row, c: c});
+                             }
+
+                             // If ANY intermediate cell is empty, move is valid.
+                             isValidLoc = inters.some(i => !board[i.r][i.c].card);
+                         }
+                     } else {
+                         // Default to Adjacent
+                         isValidLoc = Math.abs(r - sourceCoords.row) + Math.abs(c - sourceCoords.col) === 1;
+                     }
+
+                     if (isEmpty && isValidLoc) targets.push({row: r, col: c});
                      
                      if (payload.allowSelf && isSame) targets.push({row: r, col: c});
                  } else if (mode === 'SPAWN_TOKEN') {
@@ -221,7 +294,7 @@ export const calculateValidTargets = (
              }
          }
     }
-    // 8. Reveal Enemy (Recon Drone) - Now handled by CREATE_STACK usually, but if MODE is used:
+    // 8. Reveal Enemy (Recon Drone)
     else if (mode === 'REVEAL_ENEMY' && payload.filter) {
         for(let r=0; r<gridSize; r++) {
              for(let c=0; c<gridSize; c++) {
@@ -252,6 +325,18 @@ export const calculateValidTargets = (
              }
          }
     }
+    // 11. Integrator Line Select (Cells in same row/col as source)
+    else if (mode === 'INTEGRATOR_LINE_SELECT' && sourceCoords) {
+         for(let r=0; r<gridSize; r++) {
+             for(let c=0; c<gridSize; c++) {
+                 const isRow = r === sourceCoords.row;
+                 const isCol = c === sourceCoords.col;
+                 if (isRow || isCol) {
+                     targets.push({row: r, col: c});
+                 }
+             }
+         }
+    }
     
     return targets;
 };
@@ -259,13 +344,36 @@ export const calculateValidTargets = (
 /**
  * Checks if an action has ANY valid targets (Board or Hand).
  */
-export const checkActionHasTargets = (action: AbilityAction, currentGameState: GameState, playerId: number | null): boolean => {
+export const checkActionHasTargets = (action: AbilityAction, currentGameState: GameState, playerId: number | null, commandContext?: CommandContext): boolean => {
      // If modal open, valid.
      if (action.type === 'OPEN_MODAL') return true;
-     if (action.type === 'CREATE_STACK') return true; // Always valid to create stack, visual feedback comes later
+     
+     // Note: CREATE_STACK is now checked via calculateValidTargets as well
+     if (action.type === 'CREATE_STACK') {
+         const boardTargets = calculateValidTargets(action, currentGameState, playerId, commandContext);
+         // CREATE_STACK might also target hand cards (e.g. Revealed), but calculateValidTargets primarily checks board.
+         // If targetOwnerId restriction allows hand targets (which are checked in App.tsx handleGlobalMouseUp),
+         // we might need a broader check.
+         // However, in this app, "No Valid Targets" usually refers to board constraints.
+         // If a stack *can* be placed on hand, we should check hand too.
+         // Most stack abilities target board.
+         // Exception: 'Revealed' token.
+         
+         if (boardTargets.length > 0) return true;
+         
+         // Check Hand targets if stack type is compatible
+         // Currently, only 'Revealed' and 'Power+/-' target hands significantly via stack?
+         // Let's check for 'Revealed' specifically or if targetOwnerId is set
+         if (action.tokenType === 'Revealed' || action.tokenType?.startsWith('Power')) {
+             return true; // Assume hand is always a valid target for these? Or check specifically.
+             // For now, strict board check for combat tokens is safest.
+         }
+         
+         return false; 
+     }
 
      // 1. Check Board Targets
-     const boardTargets = calculateValidTargets(action, currentGameState, playerId);
+     const boardTargets = calculateValidTargets(action, currentGameState, playerId, commandContext);
      if (boardTargets.length > 0) return true;
 
      // 2. Check Hand Targets (For 'DESTROY' actions targeting Revealed cards)

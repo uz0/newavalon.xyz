@@ -2,6 +2,10 @@
  * @file Defines the core data structures and types used throughout the application.
  */
 
+import { AbilityAction } from './utils/autoAbilities';
+
+export type { AbilityAction };
+
 /**
  * Enum representing the different playable deck factions.
  */
@@ -61,6 +65,7 @@ export interface CounterDefinition {
  */
 export interface Card {
   id: string;
+  baseId?: string; // The ID key from the contentDatabase (e.g., 'riotAgent'). Used for localization.
   deck: DeckType | SpecialItemType;
   name: string;
   imageUrl: string; // The primary Cloudinary URL.
@@ -151,6 +156,18 @@ export interface HighlightData {
 }
 
 /**
+ * Data structure for floating text effects (e.g. damage, score).
+ */
+export interface FloatingTextData {
+    id?: string; // Added locally for keying
+    row: number;
+    col: number;
+    text: string;
+    playerId: number; // The player associated with the effect (determines color)
+    timestamp: number;
+}
+
+/**
  * Represents the complete state of the game at any given moment.
  */
 export interface GameState {
@@ -165,7 +182,17 @@ export interface GameState {
   isReadyCheckActive: boolean;
   revealRequests: RevealRequest[];
   activeTurnPlayerId?: number;
+  startingPlayerId?: number; // The ID of the player who started the game (Turn 1 Player 1)
   currentPhase: number; // 0 to 4 representing the index in TURN_PHASES
+  isScoringStep: boolean; // True when waiting for the active player to score a line after Commit phase
+  
+  // Round Logic
+  currentRound: number; // 1, 2, or 3
+  turnNumber: number; // Counts total full orbits (circles)
+  roundEndTriggered: boolean; // True if someone hit the score threshold
+  roundWinners: Record<number, number[]>; // Map of Round Number -> Winner Player IDs
+  gameWinner: number | null; // Player ID if game is over
+  isRoundEndModalOpen: boolean; // Controls visibility of inter-round modal
 }
 
 /**
@@ -249,4 +276,16 @@ export interface CursorStackState {
     excludeOwnerId?: number; // Optional restriction - Exclusive (e.g. Vigilant Spotter: Don't reveal self)
     onlyOpponents?: boolean; // Optional restriction - Exclusive (Don't reveal self OR teammates)
     onlyFaceDown?: boolean;  // Optional restriction - Only cards that are currently hidden (Face down or unrevealed hand)
+    isDeployAbility?: boolean; // True if the stack was created by a Deploy ability (for correct consumption tracking)
+    requiredTargetStatus?: string; // Optional: target must have this status to be valid
+    mustBeAdjacentToSource?: boolean; // Optional: target must be adjacent to sourceCoords
+    mustBeInLineWithSource?: boolean; // Optional: target must be in line with sourceCoords
+    placeAllAtOnce?: boolean; // Optional: if true, placing the stack puts ALL counters on one target instead of one by one
+}
+
+/**
+ * Context data stored between steps of a multi-step command.
+ */
+export interface CommandContext {
+    lastMovedCardCoords?: { row: number, col: number };
 }

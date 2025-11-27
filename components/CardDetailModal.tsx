@@ -1,3 +1,4 @@
+
 /**
  * @file Renders a modal for a detailed view of a single card.
  */
@@ -5,6 +6,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import type { Card as CardType, Player, CardStatus } from '../types';
 import { PLAYER_COLORS, DECK_THEMES } from '../constants';
 import { formatAbilityText } from '../utils/textFormatters';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface CardDetailModalProps {
   card: CardType;
@@ -21,7 +23,11 @@ interface CardDetailModalProps {
  * @returns {React.ReactElement} The rendered modal.
  */
 export const CardDetailModal: React.FC<CardDetailModalProps> = ({ card, ownerPlayer, onClose, statusDescriptions, allPlayers, imageRefreshVersion }) => {
+  const { getCardTranslation, getCounterTranslation } = useLanguage();
   const [currentImageSrc, setCurrentImageSrc] = useState(card.imageUrl);
+
+  const localized = card.baseId ? getCardTranslation(card.baseId) : undefined;
+  const displayCard = localized ? { ...card, ...localized } : card;
 
   useEffect(() => {
     let src = card.imageUrl;
@@ -72,23 +78,23 @@ export const CardDetailModal: React.FC<CardDetailModalProps> = ({ card, ownerPla
         {/* Left: Image */}
         <div className="w-1/2 h-full flex-shrink-0">
             {currentImageSrc ? (
-                <img src={currentImageSrc} onError={handleImageError} alt={card.name} className="w-full h-full object-contain rounded-lg" />
+                <img src={currentImageSrc} onError={handleImageError} alt={displayCard.name} className="w-full h-full object-contain rounded-lg" />
             ) : (
-                <div className="w-full h-full bg-gray-700 rounded-lg flex items-center justify-center text-2xl font-bold text-center p-4">{card.name}</div>
+                <div className="w-full h-full bg-gray-700 rounded-lg flex items-center justify-center text-2xl font-bold text-center p-4">{displayCard.name}</div>
             )}
         </div>
         {/* Right: Details */}
         <div className="w-1/2 h-full flex flex-col gap-4 overflow-y-auto pr-2 text-left">
             {/* Title & Deck */}
             <div>
-                <h2 className="text-4xl font-bold">{card.name}</h2>
-                <p className="text-lg text-gray-400 capitalize">{card.types?.join(", ") || `${card.deck} Card`}</p>
+                <h2 className="text-4xl font-bold">{displayCard.name}</h2>
+                <p className="text-lg text-gray-400 capitalize">{displayCard.types?.join(", ") || `${displayCard.deck} Card`}</p>
             </div>
             
             {/* Core Stats */}
             <div className="bg-gray-900 p-4 rounded-lg">
-                <p><strong className="text-indigo-400 text-lg">Power:</strong> <span className="text-xl font-bold">{card.power}</span></p>
-                <p className="mt-2"><strong className="text-indigo-400 text-lg">Ability:</strong> <span className="text-gray-200 text-base">{formatAbilityText(card.ability)}</span></p>
+                <p><strong className="text-indigo-400 text-lg">Power:</strong> <span className="text-xl font-bold">{displayCard.power}</span></p>
+                <p className="mt-2"><strong className="text-indigo-400 text-lg">Ability:</strong> <span className="text-gray-200 text-base">{formatAbilityText(displayCard.ability)}</span></p>
             </div>
 
             {/* Owner Info */}
@@ -116,10 +122,13 @@ export const CardDetailModal: React.FC<CardDetailModalProps> = ({ card, ownerPla
                                  return `${pName} (x${count})`;
                              }).join(', ');
 
+                             const counterDef = getCounterTranslation(type);
+                             const description = counterDef ? counterDef.description : (statusDescriptions[type] || 'No description available.');
+
                              return (
                                  <li key={type}>
                                     <strong className="text-gray-200">{type}</strong> <span className="text-gray-400 text-xs ml-1">- {breakdown}</span>
-                                    <p className="text-gray-400 text-xs pl-2 mt-0.5">{statusDescriptions[type] || 'No description available.'}</p>
+                                    <p className="text-gray-400 text-xs pl-2 mt-0.5">{description}</p>
                                 </li>
                             );
                         })}
@@ -128,10 +137,10 @@ export const CardDetailModal: React.FC<CardDetailModalProps> = ({ card, ownerPla
             )}
             
             {/* Flavor Text */}
-            {card.flavorText && (
+            {displayCard.flavorText && (
                 <div className="bg-gray-900 p-4 rounded-lg">
                     <h3 className="text-indigo-400 font-bold mb-1">Flavor Text</h3>
-                    <p className="italic text-gray-400">{card.flavorText?.split('\n').map((line, i) => <React.Fragment key={i}>{i > 0 && <br />}{line}</React.Fragment>)}</p>
+                    <p className="italic text-gray-400">{displayCard.flavorText?.split('\n').map((line, i) => <React.Fragment key={i}>{i > 0 && <br />}{line}</React.Fragment>)}</p>
                 </div>
             )}
 

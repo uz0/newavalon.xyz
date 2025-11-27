@@ -28,3 +28,27 @@
   scrollbar-width: thin;
   scrollbar-color: #4A5568 #1A202C;
 }
+
+@keyframes pulse-border-thick {
+  0%, 100% {
+    border-color: rgba(99, 102, 241, 1); /* indigo-500 */
+    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.5);
+  }
+  50% {
+    border-color: rgba(255, 255, 255, 0.8);
+    box-shadow: 0 0 0 8px rgba(255, 255, 255, 0.3);
+  }
+}
+
+.animate-deck-reminder {
+  animation: pulse-border-thick 1s ease-in-out 5;
+}
+
+@keyframes float-up {
+  0% { transform: translateY(0); opacity: 1; }
+  100% { transform: translateY(-40px); opacity: 0; }
+}
+
+.animate-float-up {
+  animation: float-up 1.5s ease-out forwards;
+}

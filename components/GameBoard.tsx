@@ -3,7 +3,7 @@
  */
 
 import React from 'react';
-import type { Board, GridSize, DragItem, DropTarget, Card as CardType, PlayerColor, HighlightData } from '../types';
+import type { Board, GridSize, DragItem, DropTarget, Card as CardType, PlayerColor, HighlightData, FloatingTextData } from '../types';
 import { Card } from './Card';
 import { PLAYER_COLORS } from '../constants';
 
@@ -35,6 +35,7 @@ interface GameBoardProps {
   validTargets?: {row: number, col: number}[];
   noTargetOverlay?: {row: number, col: number} | null;
   disableActiveHighlights?: boolean; // New prop to suppress active highlighting
+  activeFloatingTexts?: FloatingTextData[]; // New prop for floating text events
 }
 
 /**
@@ -238,13 +239,38 @@ const gridSizeClasses: { [key in GridSize]: string } = {
     7: 'grid-cols-7 grid-rows-7',
 };
 
+const FloatingTextOverlay: React.FC<{ textData: FloatingTextData; playerColorMap: Map<number, PlayerColor>; }> = ({ textData, playerColorMap }) => {
+    const playerColor = playerColorMap.get(textData.playerId);
+    // Map player colors to text colors explicitly for better visibility
+    const colorClassMap: Record<string, string> = {
+        blue: 'text-blue-400 drop-shadow-[0_0_4px_rgba(59,130,246,0.8)]',
+        purple: 'text-purple-400 drop-shadow-[0_0_4px_rgba(168,85,247,0.8)]',
+        red: 'text-red-500 drop-shadow-[0_0_4px_rgba(239,68,68,0.8)]',
+        green: 'text-green-400 drop-shadow-[0_0_4px_rgba(34,197,94,0.8)]',
+        yellow: 'text-yellow-400 drop-shadow-[0_0_4px_rgba(234,179,8,0.8)]',
+        orange: 'text-orange-400 drop-shadow-[0_0_4px_rgba(249,115,22,0.8)]',
+        pink: 'text-pink-400 drop-shadow-[0_0_4px_rgba(236,72,153,0.8)]',
+        brown: 'text-[#A0522D] drop-shadow-[0_0_4px_rgba(139,69,19,0.8)]', // Sienna
+    };
+    
+    const colorClass = (playerColor && colorClassMap[playerColor]) ? colorClassMap[playerColor] : 'text-white';
+
+    return (
+        <div className={`absolute inset-0 flex items-center justify-center pointer-events-none z-[60] animate-float-up`}>
+            <span className={`text-4xl font-black ${colorClass}`} style={{ textShadow: '2px 2px 0 #000' }}>
+                {textData.text}
+            </span>
+        </div>
+    );
+};
+
 /**
  * The main GameBoard component, which displays the grid of cells and handles board-level interactions.
  * It dynamically renders a subsection of the total board based on `activeGridSize`.
  * @param {GameBoardProps} props The properties for the component.
  * @returns {React.ReactElement} The rendered game board.
  */
-export const GameBoard: React.FC<GameBoardProps> = ({ board, isGameStarted, activeGridSize, handleDrop, draggedItem, setDraggedItem, openContextMenu, playMode, setPlayMode, highlight, playerColorMap, localPlayerId, onCardDoubleClick, onEmptyCellDoubleClick, imageRefreshVersion, cursorStack, setCursorStack, currentPhase, activeTurnPlayerId, onCardClick, onEmptyCellClick, validTargets, noTargetOverlay, disableActiveHighlights }) => {
+export const GameBoard: React.FC<GameBoardProps> = ({ board, isGameStarted, activeGridSize, handleDrop, draggedItem, setDraggedItem, openContextMenu, playMode, setPlayMode, highlight, playerColorMap, localPlayerId, onCardDoubleClick, onEmptyCellDoubleClick, imageRefreshVersion, cursorStack, setCursorStack, currentPhase, activeTurnPlayerId, onCardClick, onEmptyCellClick, validTargets, noTargetOverlay, disableActiveHighlights, activeFloatingTexts }) => {
   const totalSize = board.length;
   // Calculate the offset to center the active grid within the total board area.
   const offset = Math.floor((totalSize - activeGridSize) / 2);
@@ -326,34 +352,42 @@ export const GameBoard: React.FC<GameBoardProps> = ({ board, isGameStarted, acti
 
             const isNoTarget = noTargetOverlay && noTargetOverlay.row === originalRowIndex && noTargetOverlay.col === originalColIndex;
 
+            // Check for active floating texts on this cell
+            const cellFloatingTexts = activeFloatingTexts?.filter(t => t.row === originalRowIndex && t.col === originalColIndex);
+
             return (
-              <GridCell
-                key={`${originalRowIndex}-${originalColIndex}`}
-                row={originalRowIndex}
-                col={originalColIndex}
-                cell={cell}
-                isGameStarted={isGameStarted}
-                handleDrop={handleDrop}
-                draggedItem={draggedItem}
-                setDraggedItem={setDraggedItem}
-                openContextMenu={openContextMenu}
-                playMode={playMode}
-                setPlayMode={setPlayMode}
-                playerColorMap={playerColorMap}
-                localPlayerId={localPlayerId}
-                onCardDoubleClick={onCardDoubleClick}
-                onEmptyCellDoubleClick={onEmptyCellDoubleClick}
-                imageRefreshVersion={imageRefreshVersion}
-                cursorStack={cursorStack}
-                setCursorStack={setCursorStack}
-                currentPhase={currentPhase}
-                activeTurnPlayerId={activeTurnPlayerId}
-                onCardClick={onCardClick}
-                onEmptyCellClick={onEmptyCellClick}
-                isValidTarget={isValidTarget}
-                showNoTarget={isNoTarget}
-                disableActiveHighlights={disableActiveHighlights}
-              />
+              <div key={`${originalRowIndex}-${originalColIndex}`} className="relative w-full h-full">
+                  <GridCell
+                    row={originalRowIndex}
+                    col={originalColIndex}
+                    cell={cell}
+                    isGameStarted={isGameStarted}
+                    handleDrop={handleDrop}
+                    draggedItem={draggedItem}
+                    setDraggedItem={setDraggedItem}
+                    openContextMenu={openContextMenu}
+                    playMode={playMode}
+                    setPlayMode={setPlayMode}
+                    playerColorMap={playerColorMap}
+                    localPlayerId={localPlayerId}
+                    onCardDoubleClick={onCardDoubleClick}
+                    onEmptyCellDoubleClick={onEmptyCellDoubleClick}
+                    imageRefreshVersion={imageRefreshVersion}
+                    cursorStack={cursorStack}
+                    setCursorStack={setCursorStack}
+                    currentPhase={currentPhase}
+                    activeTurnPlayerId={activeTurnPlayerId}
+                    onCardClick={onCardClick}
+                    onEmptyCellClick={onEmptyCellClick}
+                    isValidTarget={isValidTarget}
+                    showNoTarget={isNoTarget}
+                    disableActiveHighlights={disableActiveHighlights}
+                  />
+                  {/* Render floating texts overlaying the cell */}
+                  {cellFloatingTexts?.map(ft => (
+                      <FloatingTextOverlay key={ft.id || `${ft.row}-${ft.col}-${ft.timestamp}`} textData={ft} playerColorMap={playerColorMap} />
+                  ))}
+              </div>
             )
           })
         )}

@@ -27,7 +27,7 @@
       "imageUrl": "https://res.cloudinary.com/dxxh6meej/image/upload/v1763253325/SYN_PATROL_AGENT_ioetlu.png",
       "fallbackImage": "/images/cards/SYN_PATROL_AGENT.png",
       "power": 2,
-      "ability": "Setup: Move this card to any cell in a line.\nSupport ⇒ Commit: Stun an adjacent opponent card with threat.",
+      "ability": "Setup: Move this card to any cell in a line.\nCommit: Stun an adjacent opponent card with threat.",
       "flavorText": "They say the city never sleeps. We make sure it doesn't even blink.",
       "types": ["Unit", "SynchroTech"],
       "faction": "SynchroTech",
@@ -38,7 +38,7 @@
       "imageUrl": "https://res.cloudinary.com/dxxh6meej/image/upload/v1763253337/SYN_RIOT_AGENT_jurf4t.png",
       "fallbackImage": "/images/cards/SYN_RIOT_AGENT.png",
       "power": 3,
-      "ability": "Deploy: Push an opponent card 1 cell. Мay take its place.\nSupport ⇒ Commit: Stun an adjacent opponent card with threat.",
+      "ability": "Deploy: Push an opponent card 1 cell. Мay take its place.\nCommit: Stun an adjacent opponent card with threat.",
       "flavorText": "- \"Citizens, disperse! This meeting is unauthorized by SynchroTech.\"",
       "types": ["Unit", "SynchroTech"],
       "faction": "SynchroTech",
@@ -173,7 +173,7 @@
       "imageUrl": "https://res.cloudinary.com/dxxh6meej/image/upload/v1763253298/FUS_CODE_KEEPER_qotsym.png",
       "fallbackImage": "/images/cards/FUS_CODE_KEEPER.png",
       "power": 3,
-      "ability": "Deploy: Exploit opponent cards with threat.\nSupport ⇒ Commit: Move opponent card with exploit 1 cell.",
+      "ability": "Deploy: Exploit all opponent cards with your threat.\nSupport ⇒ Commit: Move opponent card with exploit 1 cell.",
       "flavorText": "The Signal is truth. All else is noise.",
       "types": ["Unit", "Fusion"],
       "faction": "Fusion",
@@ -282,7 +282,7 @@
       "ability": "Gain points in a chosen line of the battlefield.",
       "types": ["Command"],
       "faction": "Command",
-      "allowedPanels": ["DECK_BUILDER"]
+      "allowedPanels": []
     },
 	"mobilization2": {
       "name": "Logistics Chain",
@@ -292,7 +292,7 @@
       "ability": "Gain points in a chosen diagonal of the battlefield.",
       "types": ["Command"],
       "faction": "Command",
-      "allowedPanels": ["DECK_BUILDER"]
+      "allowedPanels": []
     },
 	"mobilization3": {
       "name": "Sector Capture",
@@ -302,7 +302,7 @@
       "ability": "Gain points from 4 adjacent allied cards.",
       "types": ["Command"],
       "faction": "Command",
-      "allowedPanels": ["DECK_BUILDER"]
+      "allowedPanels": []
     }
   },
 
@@ -429,9 +429,7 @@
       { "cardId": "tacticalManeuver", "quantity": 2 },
       { "cardId": "inspiration", "quantity": 2 },
       { "cardId": "dataInterception", "quantity": 2 },
-	  { "cardId": "mobilization1", "quantity": 3 },
-      { "cardId": "mobilization2", "quantity": 2 },
-      { "cardId": "mobilization3", "quantity": 1 }
+	  { "cardId": "falseOrders", "quantity": 2 }
       ]
     },
     {
@@ -448,9 +446,7 @@
       { "cardId": "tacticalManeuver", "quantity": 2 },
       { "cardId": "inspiration", "quantity": 2 },
       { "cardId": "dataInterception", "quantity": 2 },
-	  { "cardId": "mobilization1", "quantity": 3 },
-      { "cardId": "mobilization2", "quantity": 2 },
-      { "cardId": "mobilization3", "quantity": 1 }
+	  { "cardId": "falseOrders", "quantity": 2 }
       ]
     },
     {
@@ -467,9 +463,8 @@
       { "cardId": "tacticalManeuver", "quantity": 2 },
       { "cardId": "inspiration", "quantity": 2 },
       { "cardId": "dataInterception", "quantity": 2 },
-	  { "cardId": "mobilization1", "quantity": 3 },
-      { "cardId": "mobilization2", "quantity": 2 },
-      { "cardId": "mobilization3", "quantity": 1 }
+	  { "cardId": "falseOrders", "quantity": 2 }
+
       ]
     },
     {
@@ -486,9 +481,7 @@
       { "cardId": "tacticalManeuver", "quantity": 2 },
       { "cardId": "inspiration", "quantity": 2 },
       { "cardId": "dataInterception", "quantity": 2 },
-	  { "cardId": "mobilization1", "quantity": 3 },
-      { "cardId": "mobilization2", "quantity": 2 },
-      { "cardId": "mobilization3", "quantity": 1 }
+	  { "cardId": "falseOrders", "quantity": 2 }
       ]
     }
   ]

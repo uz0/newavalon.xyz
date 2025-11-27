@@ -8,6 +8,7 @@ import { DeckType } from '../types';
 import { DECK_THEMES, PLAYER_COLORS, STATUS_ICONS } from '../constants';
 import { Tooltip, CardTooltipContent } from './Tooltip';
 import { canActivateAbility } from '../utils/autoAbilities';
+import { useLanguage } from '../contexts/LanguageContext';
 
 /**
  * Props for the Card component.
@@ -23,6 +24,7 @@ interface CardProps {
   activePhaseIndex?: number;
   activeTurnPlayerId?: number; // Added to check turn ownership
   disableActiveHighlights?: boolean; // New prop to suppress active state
+  extraPowerSpacing?: boolean; // New prop to increase power circle offset from edges
 }
 
 /**
@@ -31,13 +33,18 @@ interface CardProps {
  * @param {CardProps} props The properties for the component.
  * @returns {React.ReactElement} The rendered card.
  */
-export const Card: React.FC<CardProps> = ({ card, isFaceUp, playerColorMap, localPlayerId, imageRefreshVersion, disableTooltip, smallStatusIcons, activePhaseIndex, activeTurnPlayerId, disableActiveHighlights }) => {
+export const Card: React.FC<CardProps> = ({ card, isFaceUp, playerColorMap, localPlayerId, imageRefreshVersion, disableTooltip, smallStatusIcons, activePhaseIndex, activeTurnPlayerId, disableActiveHighlights, extraPowerSpacing }) => {
+  const { getCardTranslation } = useLanguage();
   const [tooltipVisible, setTooltipVisible] = useState(false);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
   const tooltipTimeoutRef = useRef<number | null>(null);
 
   // Local state to track if the highlight for the current phase has been dismissed by clicking
   const [highlightDismissed, setHighlightDismissed] = useState(false);
+
+  // Localization
+  const localized = card.baseId ? getCardTranslation(card.baseId) : undefined;
+  const displayCard = localized ? { ...card, ...localized } : card;
 
   // Reset dismissed state when the phase changes
   useEffect(() => {
@@ -125,6 +132,9 @@ export const Card: React.FC<CardProps> = ({ card, isFaceUp, playerColorMap, loca
 
   // --- Phase Highlighting Logic ---
   // Use shared utility to determine if the card conditions are met for highlighting
+  // NOTE: canActivateAbility checks the card's *ability* string for keywords. 
+  // Since logic is based on English keywords (Deploy, Support, etc.), we should pass the ORIGINAL English card to logic checks,
+  // but render the LOCALIZED card to the user.
   const canActivate = (activePhaseIndex !== undefined && activeTurnPlayerId !== undefined) 
       ? canActivateAbility(card, activePhaseIndex, activeTurnPlayerId) 
       : false;
@@ -211,7 +221,7 @@ export const Card: React.FC<CardProps> = ({ card, isFaceUp, playerColorMap, loca
   if (card.deck === 'counter') {
     return (
       <div
-        title={card.name}
+        title={displayCard.name}
         className={`w-full h-full ${card.color} shadow-md`}
         style={{ clipPath: 'polygon(30% 0%, 70% 0%, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0% 70%, 0% 30%)' }}
       ></div>
@@ -236,6 +246,9 @@ export const Card: React.FC<CardProps> = ({ card, isFaceUp, playerColorMap, loca
   
   // Robust check for displaying tooltip: visible + coordinate check (prevent 0,0)
   const showTooltip = tooltipVisible && isFaceUp && !disableTooltip && (tooltipPos.x > 0 && tooltipPos.y > 0);
+
+  // Determine position classes for power indicator
+  const powerPositionClass = extraPowerSpacing ? 'bottom-[10px] right-[10px]' : 'bottom-[5px] right-[5px]';
 
   return (
     <>
@@ -297,11 +310,11 @@ export const Card: React.FC<CardProps> = ({ card, isFaceUp, playerColorMap, loca
                 className={`relative w-full h-full ${cardBg} rounded-md shadow-md ${borderClass} ${themeColor} ${textColor} flex-shrink-0 select-none overflow-hidden transition-all duration-300 ${shouldHighlight ? 'scale-[1.15] z-10' : ''}`}
               >
                 {currentImageSrc ? (
-                  <img src={currentImageSrc} onError={handleImageError} alt={card.name} className="absolute inset-0 w-full h-full object-cover" />
+                  <img src={currentImageSrc} onError={handleImageError} alt={displayCard.name} className="absolute inset-0 w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full p-1 flex items-center justify-center">
                       <span className="text-center text-sm font-bold">
-                        {card.name}
+                        {displayCard.name}
                       </span>
                   </div>
                 )}
@@ -328,7 +341,7 @@ export const Card: React.FC<CardProps> = ({ card, isFaceUp, playerColorMap, loca
                 {/* Power Display */}
                 {card.power > 0 && (
                     <div 
-                        className={`absolute bottom-[5px] right-[5px] w-8 h-8 rounded-full ${ownerColorData ? ownerColorData.bg : 'bg-gray-600'} border-[3px] border-white flex items-center justify-center z-20 shadow-md`}
+                        className={`absolute ${powerPositionClass} w-8 h-8 rounded-full ${ownerColorData ? ownerColorData.bg : 'bg-gray-600'} border-[3px] border-white flex items-center justify-center z-20 shadow-md`}
                     >
                         <span className={`${powerTextColor} font-bold text-lg leading-none`} style={{ textShadow: '0 0 2px black' }}>{currentPower}</span>
                     </div>
@@ -340,7 +353,7 @@ export const Card: React.FC<CardProps> = ({ card, isFaceUp, playerColorMap, loca
 
       {showTooltip && (
           <Tooltip x={tooltipPos.x} y={tooltipPos.y}>
-             <CardTooltipContent card={card} />
+             <CardTooltipContent card={displayCard} />
           </Tooltip>
       )}
     </>
