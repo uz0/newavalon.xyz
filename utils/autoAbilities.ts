@@ -201,7 +201,9 @@ const getDeployAction = (
             payload: {
                 tokenType: 'Exploit',
                 filter: (target: Card) => target.ownerId !== ownerId && hasStatus(target, 'Threat', ownerId)
-            }
+            },
+            sourceCard: card,
+            sourceCoords: coords
         };
     }
     if (name.includes('devout synthetic')) {
@@ -216,7 +218,9 @@ const getDeployAction = (
             payload: {
                 tokenType: 'Exploit',
                 filter: (target: Card) => target.ownerId === ownerId && hasStatus(target, 'Support', ownerId)
-            }
+            },
+            sourceCard: card,
+            sourceCoords: coords
         };
     }
     if (name.includes('zealous missionary')) {
@@ -287,7 +291,9 @@ const getDeployAction = (
                  payload: { 
                      tokenType: 'Shield',
                      filter: (target: Card) => target.id === card.id 
-                 }
+                 },
+                 sourceCard: card,
+                 sourceCoords: coords
              };
          }
          if (card.ability.toLowerCase().includes('stun 1')) return { type: 'CREATE_STACK', tokenType: 'Stun', count: 1 };
@@ -563,7 +569,9 @@ const getPhaseAction = (
                 payload: { 
                     tokenType: 'Shield',
                     filter: (target: Card) => target.id === card.id
-                }
+                },
+                sourceCard: card,
+                sourceCoords: coords
             };
         }
         if (name.includes('code keeper')) {

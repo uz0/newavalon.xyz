@@ -112,6 +112,7 @@ export const useGameState = () => {
   const [gamesList, setGamesList] = useState<{gameId: string, playerCount: number}[]>([]);
   const [latestHighlight, setLatestHighlight] = useState<HighlightData | null>(null);
   const [latestFloatingTexts, setLatestFloatingTexts] = useState<FloatingTextData[] | null>(null);
+  const [latestNoTarget, setLatestNoTarget] = useState<{coords: {row: number, col: number}, timestamp: number} | null>(null);
   const ws = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
   const joiningGameIdRef = useRef<string | null>(null);
@@ -216,6 +217,8 @@ export const useGameState = () => {
             }
         } else if (data.type === 'HIGHLIGHT_TRIGGERED') {
             setLatestHighlight(data.highlightData);
+        } else if (data.type === 'NO_TARGET_TRIGGERED') {
+            setLatestNoTarget({ coords: data.coords, timestamp: data.timestamp });
         } else if (data.type === 'FLOATING_TEXT_TRIGGERED') {
             setLatestFloatingTexts([data.floatingTextData]);
         } else if (data.type === 'FLOATING_TEXT_BATCH_TRIGGERED') {
@@ -812,6 +815,7 @@ export const useGameState = () => {
                 newDeck.push({
                     ...cardDef,
                     id: `${prefix}_${cardId.toUpperCase()}_${instanceNum}`,
+                    baseId: cardId, // Ensure baseId is set for localization and display
                     deck: deckType,
                     ownerId: playerId,
                     ownerName: player.name,
@@ -1352,6 +1356,17 @@ export const useGameState = () => {
       }
   }, []);
 
+  const triggerNoTarget = useCallback((coords: { row: number, col: number }) => {
+    if (ws.current?.readyState === WebSocket.OPEN && gameStateRef.current.gameId) {
+        ws.current.send(JSON.stringify({ 
+            type: 'TRIGGER_NO_TARGET', 
+            gameId: gameStateRef.current.gameId, 
+            coords, 
+            timestamp: Date.now() 
+        }));
+    }
+  }, []);
+
   const markAbilityUsed = useCallback((boardCoords: { row: number, col: number }, isDeployAbility?: boolean) => {
       updateState(currentState => {
           if (!currentState.isGameStarted) return currentState;
@@ -1669,6 +1684,7 @@ export const useGameState = () => {
     gamesList,
     latestHighlight,
     latestFloatingTexts, 
+    latestNoTarget,
     createGame,
     joinGame,
     requestGamesList,
@@ -1712,6 +1728,7 @@ export const useGameState = () => {
     forceReconnect,
     triggerHighlight, 
     triggerFloatingText,
+    triggerNoTarget,
     nextPhase,
     prevPhase,
     setPhase,

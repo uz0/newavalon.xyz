@@ -1,7 +1,6 @@
-import { useRef, useEffect, useLayoutEffect } from 'react';
+import React, { useRef, useEffect, useLayoutEffect } from 'react';
 import type { CursorStackState, GameState, AbilityAction, DragItem, DropTarget, CommandContext } from '../types';
 import { validateTarget } from '../utils/targeting';
-import { countersDatabase } from '../contentDatabase';
 
 interface UseAppCountersProps {
     gameState: GameState;
@@ -16,6 +15,7 @@ interface UseAppCountersProps {
     onAction: (action: AbilityAction, sourceCoords: { row: number, col: number }) => void;
     cursorStack: CursorStackState | null;
     setCursorStack: React.Dispatch<React.SetStateAction<CursorStackState | null>>;
+    imageRefreshVersion: number;
 }
 
 export const useAppCounters = ({
@@ -30,7 +30,8 @@ export const useAppCounters = ({
     setCommandContext,
     onAction,
     cursorStack,
-    setCursorStack
+    setCursorStack,
+    imageRefreshVersion
 }: UseAppCountersProps) => {
     const cursorFollowerRef = useRef<HTMLDivElement>(null);
     const mousePos = useRef({ x: 0, y: 0 });
@@ -40,7 +41,8 @@ export const useAppCounters = ({
     useLayoutEffect(() => {
         if (cursorStack && cursorFollowerRef.current) {
             const { x, y } = mousePos.current;
-            cursorFollowerRef.current.style.transform = `translate(${x + 2}px, ${y + 2}px)`;
+            // Center the 48x48 (w-12 h-12) element on the cursor
+            cursorFollowerRef.current.style.transform = `translate(${x - 24}px, ${y - 24}px)`;
         }
     }, [cursorStack]);
 
@@ -49,7 +51,8 @@ export const useAppCounters = ({
         const handleMouseMove = (e: MouseEvent) => {
             mousePos.current = { x: e.clientX, y: e.clientY };
             if (cursorFollowerRef.current) {
-                cursorFollowerRef.current.style.transform = `translate(${e.clientX + 2}px, ${e.clientY + 2}px)`;
+                // Center the 48x48 (w-12 h-12) element on the cursor
+                cursorFollowerRef.current.style.transform = `translate(${e.clientX - 24}px, ${e.clientY - 24}px)`;
             }
         };
         window.addEventListener('mousemove', handleMouseMove);
@@ -207,7 +210,6 @@ export const useAppCounters = ({
                             count: amountToDrop
                         }, { target: 'board', boardCoords: { row, col }});
                         
-                        // NEW: Record context for commands like False Orders / Temporary Shelter
                         if (cursorStack.recordContext) {
                             setCommandContext(prev => ({
                                 ...prev,
@@ -221,26 +223,17 @@ export const useAppCounters = ({
                             setCursorStack(prev => prev ? ({ ...prev, count: prev.count - amountToDrop }) : null);
                         } else {
                             if (cursorStack.chainedAction) {
-                                // Manual Context Injection:
-                                // If we just recorded context, inject it into the chained action immediately.
-                                // This bypasses the async state update delay of `commandContext`.
                                 const chained = { ...cursorStack.chainedAction };
-                                
                                 if (cursorStack.recordContext) {
-                                    // If we are chaining into a SELECT_CELL mode (like Temporary Shelter),
-                                    // we usually want to move the card we just targeted.
                                     if (chained.mode === 'SELECT_CELL') {
                                         chained.sourceCard = targetCard;
                                         chained.sourceCoords = { row, col };
-                                        chained.recordContext = true; // Continue passing context if needed
+                                        chained.recordContext = true; 
                                     }
-                                    
-                                    // NEW: Also inject for GLOBAL_AUTO_APPLY (Temporary Shelter Module 1 - Remove Aim)
                                     if (chained.type === 'GLOBAL_AUTO_APPLY') {
                                         chained.sourceCoords = { row, col };
                                     }
                                 }
-
                                 onAction(chained, cursorStack.sourceCoords || {row: -1, col: -1});
                             }
                             setCursorStack(null);

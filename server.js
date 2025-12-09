@@ -804,6 +804,18 @@ wss.on('connection', ws => {
                     }
                     break;
                 }
+                case 'TRIGGER_NO_TARGET': {
+                    const { coords, timestamp } = data;
+                    if (gameState) {
+                        const message = JSON.stringify({ type: 'NO_TARGET_TRIGGERED', coords, timestamp });
+                        wss.clients.forEach(client => {
+                            if (client.readyState === WebSocket.OPEN && clientGameMap.get(client) === gameId) {
+                                client.send(message);
+                            }
+                        });
+                    }
+                    break;
+                }
                 case 'TRIGGER_FLOATING_TEXT': {
                     const { floatingTextData } = data;
                     if (gameState) {

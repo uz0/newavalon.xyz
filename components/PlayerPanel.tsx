@@ -212,7 +212,7 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
     const winCount = roundWinners ? Object.values(roundWinners).filter(winners => winners.includes(player.id)).length : 0;
     const isFirstPlayer = startingPlayerId === player.id;
     const firstPlayerIconUrl = "https://res.cloudinary.com/dxxh6meej/image/upload/v1763478810/LastPlayed_bfkbwb.png"; 
-    const ROUND_WIN_MEDAL_URL = "https://res.cloudinary.com/dxxh6meej/image/upload/v1764204928/medal_rgbw8d.png";
+    const ROUND_WIN_MEDAL_URL = "https://res.cloudinary.com/dxxh6meej/image/upload/v1764252181/medal_rgbw8d.png";
 
     // Flash animation for deck: 
     // Triggered when it is the player's turn AND it is the Setup phase (Phase 0)

@@ -17,7 +17,7 @@ interface UseAppCommandProps {
     removeBoardCardStatus: (coords: any, status: string) => void;
     setCursorStack: React.Dispatch<React.SetStateAction<CursorStackState | null>>;
     setAbilityMode: React.Dispatch<React.SetStateAction<AbilityAction | null>>;
-    setNoTargetOverlay: React.Dispatch<React.SetStateAction<{ row: number, col: number } | null>>;
+    triggerNoTarget: (coords: { row: number, col: number }) => void;
 }
 
 export const useAppCommand = ({
@@ -33,7 +33,7 @@ export const useAppCommand = ({
     removeBoardCardStatus,
     setCursorStack,
     setAbilityMode,
-    setNoTargetOverlay
+    triggerNoTarget
 }: UseAppCommandProps) => {
 
     const playCommandCard = useCallback((card: Card, source: DragItem) => {
@@ -56,7 +56,7 @@ export const useAppCommand = ({
             'repositioning', 
             'inspiration', 
             'datainterception', 
-            'falseorders',
+            'falseorders', 
             'experimentalstimulants',
             'logisticschain',
             'quickresponseteam',

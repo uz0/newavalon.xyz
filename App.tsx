@@ -88,6 +88,8 @@ export default function App() {
     triggerHighlight,
     latestHighlight,
     latestFloatingTexts, 
+    latestNoTarget,
+    triggerNoTarget,
     nextPhase,
     prevPhase,
     setPhase,
@@ -194,7 +196,7 @@ export default function App() {
       removeBoardCardStatus,
       setCursorStack,
       setAbilityMode,
-      setNoTargetOverlay
+      triggerNoTarget
   });
 
   // Hook for General Abilities
@@ -216,7 +218,7 @@ export default function App() {
       commandContext,
       setCommandContext,
       setViewingDiscard,
-      setNoTargetOverlay,
+      triggerNoTarget,
       setPlayMode,
       setCounterSelectionData,
       interactionLock,
@@ -257,7 +259,8 @@ export default function App() {
       setCommandContext, // Passed down for False Orders Step 1 recording
       onAction: executeAction, // Pass the executor here
       cursorStack,
-      setCursorStack
+      setCursorStack,
+      imageRefreshVersion
   });
 
   const activePlayerCount = useMemo(() => gameState.players.filter(p => !p.isDummy && !p.isDisconnected).length, [gameState.players]);
@@ -312,9 +315,9 @@ export default function App() {
           // Find real index in current deck
           const realIndex = targetPlayer.deck.findIndex(c => c.id === cardToMove.id);
           if (realIndex !== -1) {
+              const realCard = targetPlayer.deck[realIndex];
               moveItem({
-                  // Using DeckType.Custom as a dummy type for the action object
-                  card: { id: 'dummy', deck: DeckType.Custom, name: '', imageUrl: '', fallbackImage: '', power: 0, ability: '', types: [] }, 
+                  card: realCard, 
                   source: 'deck',
                   playerId: secretInformantData.targetPlayerId,
                   cardIndex: realIndex
@@ -450,6 +453,15 @@ export default function App() {
           window.removeEventListener('contextmenu', handleRightClick);
       }
   }, [cursorStack, playMode, abilityMode, markAbilityUsed, gameState.isGameStarted, nextPhase, localPlayer, moveItem, gameState.players, localPlayerId]);
+
+  // Synchronize NO TARGET Overlay via WebSocket Signal
+  useEffect(() => {
+      if (latestNoTarget) {
+          setNoTargetOverlay(latestNoTarget.coords);
+          const timer = setTimeout(() => setNoTargetOverlay(null), 750);
+          return () => clearTimeout(timer);
+      }
+  }, [latestNoTarget]);
 
   useEffect(() => {
       let effectiveAction: AbilityAction | null = abilityMode;
@@ -719,13 +731,12 @@ export default function App() {
                   setAbilityMode(actionToProcess);
               } else {
                   if (actionToProcess.sourceCoords && actionToProcess.sourceCoords.row >= 0) {
-                      setNoTargetOverlay(actionToProcess.sourceCoords);
-                      setTimeout(() => setNoTargetOverlay(null), 750);
+                      triggerNoTarget(actionToProcess.sourceCoords);
                   }
               }
           }
       }
-  }, [actionQueue, abilityMode, cursorStack, localPlayerId, drawCard, updatePlayerScore, gameState.activeTurnPlayerId, gameState.board, moveItem, commandContext, addBoardCardStatus, gameState.players, executeAction]);
+  }, [actionQueue, abilityMode, cursorStack, localPlayerId, drawCard, updatePlayerScore, gameState.activeTurnPlayerId, gameState.board, moveItem, commandContext, addBoardCardStatus, gameState.players, executeAction, triggerNoTarget]);
 
   const closeAllModals = () => {
       setTokensModalOpen(false);
@@ -863,6 +874,39 @@ export default function App() {
       }
       return undefined;
   }, [viewingDiscard?.pickConfig?.filterType]);
+
+  const handleDiscardCardClick = (cardIndex: number) => {
+      if (!viewingDiscard?.pickConfig) return;
+      
+      const { action, isDeck } = viewingDiscard.pickConfig;
+      
+      if (action === 'recover') {
+          // Add to hand
+          if (isDeck) {
+              moveItem({ 
+                  card: viewingDiscardPlayer!.deck[cardIndex], 
+                  source: 'deck', 
+                  playerId: viewingDiscardPlayer!.id, 
+                  cardIndex 
+              }, { 
+                  target: 'hand', 
+                  playerId: viewingDiscardPlayer!.id 
+              });
+          } else {
+              recoverDiscardedCard(viewingDiscardPlayer!.id, cardIndex);
+          }
+          setViewingDiscard(null);
+      } else if (action === 'resurrect') {
+          // For Immunis: Select card, then close modal to allow cell selection
+          if (abilityMode?.mode === 'IMMUNIS_RETRIEVE') {
+              setAbilityMode(prev => ({
+                  ...prev!,
+                  payload: { ...prev!.payload, selectedCardIndex: cardIndex }
+              }));
+              setViewingDiscard(null);
+          }
+      }
+  };
 
   const renderedContextMenu = useMemo(() => {
     // ... (Context menu logic same as original)
@@ -1128,6 +1172,24 @@ export default function App() {
           />
       )}
       
+      {isTeamAssignOpen && (
+          <TeamAssignmentModal
+              players={gameState.players}
+              gameMode={gameState.gameMode}
+              onCancel={() => setTeamAssignOpen(false)}
+              onConfirm={handleTeamAssignment}
+          />
+      )}
+
+      {gameState.isReadyCheckActive && localPlayer && (
+          <ReadyCheckModal
+              players={gameState.players}
+              localPlayer={localPlayer}
+              onReady={playerReady}
+              onCancel={cancelReadyCheck}
+          />
+      )}
+      
       {commandModalCard && (
           <CommandModal
               isOpen={!!commandModalCard}
@@ -1171,7 +1233,86 @@ export default function App() {
           />
       )}
 
+      {/* MODALS RE-ADDED TO RENDER TREE */}
+      {viewingDiscard && viewingDiscardPlayer && (
+          <DiscardModal
+              isOpen={!!viewingDiscard}
+              onClose={() => { setViewingDiscard(null); setAbilityMode(null); }}
+              title={viewingDiscard.isDeckView || viewingDiscard.pickConfig?.isDeck ? (viewingDiscard.pickConfig ? "Select Card from Deck" : "Deck") : (viewingDiscard.pickConfig ? "Select Card from Discard" : "Discard Pile")}
+              player={viewingDiscardPlayer}
+              cards={viewingDiscard.isDeckView || viewingDiscard.pickConfig?.isDeck ? viewingDiscardPlayer.deck : viewingDiscardPlayer.discard}
+              setDraggedItem={setDraggedItem}
+              canInteract={!!viewingDiscard.pickConfig || viewingDiscardPlayer.id === localPlayerId || !!viewingDiscardPlayer.isDummy}
+              onCardClick={handleDiscardCardClick}
+              onCardDoubleClick={handleDiscardCardClick} 
+              isDeckView={viewingDiscard.isDeckView || viewingDiscard.pickConfig?.isDeck}
+              playerColorMap={playerColorMap}
+              localPlayerId={localPlayerId}
+              imageRefreshVersion={imageRefreshVersion}
+              highlightFilter={highlightFilter}
+          />
+      )}
+
+      <TokensModal
+          isOpen={isTokensModalOpen}
+          onClose={() => setTokensModalOpen(false)}
+          setDraggedItem={setDraggedItem}
+          openContextMenu={openContextMenu}
+          canInteract={!!localPlayerId && !isSpectator}
+          anchorEl={tokensModalAnchor}
+          imageRefreshVersion={imageRefreshVersion}
+          draggedItem={draggedItem}
+      />
+
+      <CountersModal
+          isOpen={isCountersModalOpen}
+          onClose={() => setCountersModalOpen(false)}
+          setDraggedItem={setDraggedItem}
+          canInteract={!!localPlayerId && !isSpectator}
+          anchorEl={countersModalAnchor}
+          imageRefreshVersion={imageRefreshVersion}
+          onCounterMouseDown={handleCounterMouseDown}
+          cursorStack={cursorStack}
+      />
+
       {renderedContextMenu}
+
+      {/* Cursor Follower for Token Stacks */}
+      {cursorStack && (
+        <div
+            ref={cursorFollowerRef}
+            className="fixed top-0 left-0 pointer-events-none z-[99999] flex items-center justify-center"
+            style={{ willChange: 'transform' }}
+        >
+            <div 
+                className="w-12 h-12 rounded-full border-2 border-white flex items-center justify-center relative bg-gray-900"
+                style={{ 
+                    backgroundImage: `url(${COUNTER_BG_URL})`, 
+                    backgroundSize: 'contain', 
+                    backgroundPosition: 'center',
+                    backgroundRepeat: 'no-repeat'
+                }}
+            >
+                {STATUS_ICONS[cursorStack.type] ? (
+                    <img 
+                        src={`${STATUS_ICONS[cursorStack.type]}${imageRefreshVersion ? `?v=${imageRefreshVersion}` : ''}`} 
+                        alt={cursorStack.type} 
+                        className="w-8 h-8 object-contain" 
+                    />
+                ) : (
+                    <span className={`font-bold text-white drop-shadow-md ${cursorStack.type.startsWith('Power') ? 'text-sm' : 'text-lg'}`}>
+                        {cursorStack.type.startsWith('Power') ? cursorStack.type : cursorStack.type.charAt(0)}
+                    </span>
+                )}
+                
+                {cursorStack.count > 1 && (
+                    <div className="absolute -top-2 -right-2 bg-red-600 text-white text-xs font-bold w-6 h-6 flex items-center justify-center rounded-full border-2 border-white shadow-sm z-10">
+                        {cursorStack.count}
+                    </div>
+                )}
+            </div>
+        </div>
+      )}
 
       {isListMode ? (
         <div className="relative h-full w-full pt-14 overflow-hidden bg-gray-900">
@@ -1292,9 +1433,9 @@ export default function App() {
                                     imageRefreshVersion={imageRefreshVersion}
                                     layoutMode="list-remote"
                                     onCardClick={handleHandCardClick}
+                                    currentPhase={gameState.currentPhase}
                                     validHandTargets={validHandTargets}
                                     onAnnouncedCardDoubleClick={handleAnnouncedCardDoubleClick}
-                                    currentPhase={gameState.currentPhase}
                                     disableActiveHighlights={isTargetingMode}
                                     roundWinners={gameState.roundWinners}
                                     startingPlayerId={gameState.startingPlayerId}
@@ -1307,9 +1448,40 @@ export default function App() {
             </div>
         </div>
       ) : (
-        <>
-            {gameState.players.map(player => (
-                <PlayerPanel
+        <div className="relative w-full h-full pt-14 bg-gray-900 overflow-hidden">
+             <div className="absolute inset-0 flex items-center justify-center">
+                 <div className="h-[95%] aspect-square">
+                     <GameBoard
+                        board={gameState.board}
+                        isGameStarted={gameState.isGameStarted}
+                        activeGridSize={gameState.activeGridSize}
+                        handleDrop={handleDrop}
+                        draggedItem={draggedItem}
+                        setDraggedItem={setDraggedItem}
+                        openContextMenu={openContextMenu}
+                        playMode={playMode}
+                        setPlayMode={setPlayMode}
+                        highlight={highlight}
+                        playerColorMap={playerColorMap}
+                        localPlayerId={localPlayerId}
+                        onCardDoubleClick={handleDoubleClickBoardCard}
+                        onEmptyCellDoubleClick={handleDoubleClickEmptyCell}
+                        imageRefreshVersion={imageRefreshVersion}
+                        cursorStack={cursorStack}
+                        setCursorStack={setCursorStack}
+                        currentPhase={gameState.currentPhase}
+                        activeTurnPlayerId={gameState.activeTurnPlayerId}
+                        onCardClick={handleBoardCardClick}
+                        onEmptyCellClick={handleEmptyCellClick}
+                        validTargets={validTargets}
+                        noTargetOverlay={noTargetOverlay}
+                        disableActiveHighlights={isTargetingMode}
+                        activeFloatingTexts={activeFloatingTexts} 
+                     />
+                 </div>
+             </div>
+             {gameState.players.map(player => (
+                 <PlayerPanel
                     key={player.id}
                     player={player}
                     isLocalPlayer={player.id === localPlayerId}
@@ -1344,197 +1516,10 @@ export default function App() {
                     startingPlayerId={gameState.startingPlayerId}
                     onDeckClick={handleDeckClick}
                     isDeckSelectable={abilityMode?.mode === 'SELECT_DECK'}
-                />
-            ))}
-            
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0">
-                 <div 
-                    ref={boardContainerRef}
-                    className="pointer-events-auto h-[80%] aspect-square flex items-center justify-center"
-                 >
-                     <GameBoard
-                        board={gameState.board}
-                        isGameStarted={gameState.isGameStarted}
-                        activeGridSize={gameState.activeGridSize}
-                        handleDrop={handleDrop}
-                        draggedItem={draggedItem}
-                        setDraggedItem={setDraggedItem}
-                        openContextMenu={openContextMenu}
-                        playMode={playMode}
-                        setPlayMode={setPlayMode}
-                        highlight={highlight}
-                        playerColorMap={playerColorMap}
-                        localPlayerId={localPlayerId}
-                        onCardDoubleClick={handleDoubleClickBoardCard}
-                        onEmptyCellDoubleClick={handleDoubleClickEmptyCell}
-                        imageRefreshVersion={imageRefreshVersion}
-                        cursorStack={cursorStack}
-                        setCursorStack={setCursorStack}
-                        currentPhase={gameState.currentPhase}
-                        activeTurnPlayerId={gameState.activeTurnPlayerId}
-                        onCardClick={handleBoardCardClick}
-                        onEmptyCellClick={handleEmptyCellClick}
-                        validTargets={validTargets}
-                        noTargetOverlay={noTargetOverlay}
-                        disableActiveHighlights={isTargetingMode}
-                        activeFloatingTexts={activeFloatingTexts}
-                     />
-                 </div>
-            </div>
-        </>
+                 />
+             ))}
+        </div>
       )}
-
-      <JoinGameModal 
-        isOpen={isJoinModalOpen}
-        onClose={() => setJoinModalOpen(false)}
-        onJoin={handleJoinGame}
-        games={gamesList}
-      />
-
-      {viewingDiscard && viewingDiscardPlayer && (
-        <DiscardModal
-            key={`${viewingDiscardPlayer.id}-${viewingDiscard.isDeckView ? 'deck' : 'discard'}`} // Unique key forces remount on view change
-            isOpen={true}
-            onClose={() => setViewingDiscard(null)}
-            title={viewingDiscard.pickConfig ? (viewingDiscard.pickConfig.isDeck ? 'Search Deck' : (viewingDiscard.pickConfig.action === 'recover' ? `Recover ${viewingDiscard.pickConfig.filterType || 'Card'}` : 'Resurrect Unit')) : (viewingDiscard.isDeckView ? "Deck" : "Discard Pile")}
-            player={viewingDiscardPlayer}
-            cards={viewingDiscard.pickConfig?.isDeck || viewingDiscard.isDeckView ? viewingDiscardPlayer.deck || [] : viewingDiscardPlayer.discard || []}
-            setDraggedItem={setDraggedItem}
-            canInteract={!!viewingDiscard.pickConfig || (!!viewingDiscardPlayer && (viewingDiscardPlayer.id === localPlayerId || !!viewingDiscardPlayer.isDummy))}
-            isDeckView={viewingDiscard.pickConfig?.isDeck || viewingDiscard.isDeckView}
-            highlightFilter={highlightFilter}
-            onCardContextMenu={(e, index) => {
-                if (!viewingDiscard.pickConfig && viewingDiscardPlayer) {
-                    const type = viewingDiscard.isDeckView ? 'deckCard' : 'discardCard';
-                    const list = viewingDiscard.isDeckView ? viewingDiscardPlayer.deck : viewingDiscardPlayer.discard;
-                    openContextMenu(e, type, { card: list[index], player: viewingDiscardPlayer, cardIndex: index });
-                }
-            }}
-            onCardClick={(index) => {
-                if (viewingDiscard.pickConfig && viewingDiscardPlayer) {
-                    const sourceList = (viewingDiscard.pickConfig.isDeck || viewingDiscard.isDeckView) ? viewingDiscardPlayer.deck : viewingDiscardPlayer.discard;
-                    const card = sourceList[index];
-                    
-                    const filterType = viewingDiscard.pickConfig.filterType;
-                    let isValid = false;
-                    if (filterType === 'Any') isValid = true;
-                    else if (filterType === 'Unit') isValid = card.types?.includes('Unit') || false;
-                    else if (filterType === 'Device') isValid = card.types?.includes('Device') || false;
-                    else if (filterType === 'Optimates') isValid = (card.types?.includes('Optimates') || card.faction === 'Optimates') && card.types?.includes('Unit');
-
-                    if (isValid) {
-                        if (viewingDiscard.pickConfig.action === 'recover') {
-                            if (viewingDiscard.pickConfig.isDeck) {
-                                moveItem({ card, source: 'deck', playerId: viewingDiscardPlayer.id, cardIndex: index }, { target: 'hand', playerId: viewingDiscardPlayer.id });
-                            } else {
-                                recoverDiscardedCard(viewingDiscardPlayer.id, index);
-                            }
-                            setViewingDiscard(null);
-                        } else if (viewingDiscard.pickConfig.action === 'resurrect') {
-                            if (abilityMode?.mode === 'IMMUNIS_RETRIEVE') {
-                                setAbilityMode(prev => prev ? ({
-                                    ...prev,
-                                    payload: { ...prev.payload, selectedCardIndex: index }
-                                }) : null);
-                                setViewingDiscard(null);
-                            }
-                        }
-                    }
-                }
-            }}
-            playerColorMap={playerColorMap}
-            localPlayerId={localPlayerId}
-            imageRefreshVersion={imageRefreshVersion}
-        />
-      )}
-
-      <TokensModal 
-        isOpen={isTokensModalOpen}
-        onClose={() => { setTokensModalOpen(false); setTokensModalAnchor(null); }}
-        setDraggedItem={setDraggedItem}
-        openContextMenu={openContextMenu}
-        canInteract={!!localPlayer}
-        anchorEl={tokensModalAnchor}
-        imageRefreshVersion={imageRefreshVersion}
-        draggedItem={draggedItem}
-      />
-
-      <CountersModal
-        isOpen={isCountersModalOpen}
-        onClose={() => { setCountersModalOpen(false); setCountersModalAnchor(null); }}
-        setDraggedItem={setDraggedItem}
-        canInteract={!!localPlayer}
-        anchorEl={countersModalAnchor}
-        imageRefreshVersion={imageRefreshVersion}
-        onCounterMouseDown={handleCounterMouseDown}
-        cursorStack={cursorStack}
-      />
-      
-      {/* Follower for Cursor Stack Only - ABSOLUTELY NO TEXT LABELS HERE */}
-      <div 
-          ref={cursorFollowerRef}
-          className={`fixed pointer-events-none z-[1000] flex items-center justify-center transition-opacity duration-200 ${cursorStack ? 'opacity-100' : 'opacity-0 hidden'}`}
-          style={{ top: 0, left: 0 }}
-      >
-          {cursorStack && (
-              <div className="relative">
-                  <div 
-                      className={`w-12 h-12 rounded-full shadow-lg flex items-center justify-center ${cursorStack.type.startsWith('Power') ? 'bg-gray-800 border-2 border-white' : ''}`}
-                      style={!cursorStack.type.startsWith('Power') ? {
-                          backgroundImage: `url(${COUNTER_BG_URL})`,
-                          backgroundSize: 'contain',
-                          backgroundRepeat: 'no-repeat'
-                      } : {}}
-                  >
-                      {STATUS_ICONS[cursorStack.type] ? (
-                          <img src={STATUS_ICONS[cursorStack.type]} className="w-full h-full object-contain p-2" />
-                      ) : (
-                          <div className="w-full h-full flex items-center justify-center font-bold text-white text-lg drop-shadow-md">
-                              {cursorStack.type[0]}
-                          </div>
-                      )}
-                  </div>
-                  <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center border border-white z-10">
-                      {cursorStack.count}
-                  </span>
-              </div>
-          )}
-      </div>
-
-      {isTeamAssignOpen && (
-          <TeamAssignmentModal
-              players={gameState.players}
-              gameMode={gameState.gameMode}
-              onCancel={() => setTeamAssignOpen(false)}
-              onConfirm={handleTeamAssignment}
-          />
-      )}
-
-      {gameState.isReadyCheckActive && (
-          <ReadyCheckModal
-              players={gameState.players}
-              localPlayer={localPlayer!}
-              onReady={playerReady}
-              onCancel={cancelReadyCheck}
-          />
-      )}
-
-      {/* Reveal Requests */}
-      {gameState.revealRequests
-          .filter(req => req.toPlayerId === localPlayerId)
-          .map((req, index) => {
-              const fromPlayer = gameState.players.find(p => p.id === req.fromPlayerId);
-              if (!fromPlayer) return null;
-              return (
-                  <RevealRequestModal
-                      key={index}
-                      fromPlayer={fromPlayer}
-                      cardCount={req.cardIdentifiers.length}
-                      onAccept={() => respondToRevealRequest(req.fromPlayerId, true)}
-                      onDecline={() => respondToRevealRequest(req.fromPlayerId, false)}
-                  />
-              );
-          })}
     </div>
   );
 }

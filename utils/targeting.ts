@@ -197,6 +197,8 @@ export const calculateValidTargets = (
     }
     // 3. Riot Push (Adjacent opponent who can be pushed into empty space)
     else if (mode === 'RIOT_PUSH' && sourceCoords) {
+        targets.push(sourceCoords); // Allow targeting self to skip
+        
         const neighbors = [
             {r: sourceCoords.row - 1, c: sourceCoords.col},
             {r: sourceCoords.row + 1, c: sourceCoords.col},

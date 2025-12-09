@@ -1,4 +1,3 @@
-
 /**
  * @file Renders a modal showing round results and winners.
  */
@@ -24,7 +23,7 @@ export const RoundEndModal: React.FC<RoundEndModalProps> = ({ gameState, onConfi
     const nextRound = gameState.currentRound + 1;
     const nextTarget = (nextRound * 10) + 10;
     
-    const medalUrl = "https://res.cloudinary.com/dxxh6meej/image/upload/v1764204928/medal_rgbw8d.png";
+    const medalUrl = "https://res.cloudinary.com/dxxh6meej/image/upload/v1764252181/medal_rgbw8d.png";
 
     // Sort players based on starting player for the round/game rotation
     // Find index of starting player

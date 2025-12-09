@@ -13,7 +13,7 @@ interface UseAppAbilitiesProps {
     commandContext: CommandContext;
     setCommandContext: React.Dispatch<React.SetStateAction<CommandContext>>;
     setViewingDiscard: React.Dispatch<React.SetStateAction<any>>;
-    setNoTargetOverlay: React.Dispatch<React.SetStateAction<{ row: number, col: number } | null>>;
+    triggerNoTarget: (coords: { row: number, col: number }) => void;
     setPlayMode: React.Dispatch<React.SetStateAction<any>>;
     setCounterSelectionData: React.Dispatch<React.SetStateAction<CounterSelectionData | null>>;
     interactionLock: React.MutableRefObject<boolean>;
@@ -50,7 +50,7 @@ export const useAppAbilities = ({
     commandContext,
     setCommandContext,
     setViewingDiscard,
-    setNoTargetOverlay,
+    triggerNoTarget,
     setPlayMode,
     setCounterSelectionData,
     interactionLock,
@@ -204,9 +204,8 @@ export const useAppAbilities = ({
                         }
                     }
                 } else {
-                    setNoTargetOverlay(sourceCoords);
+                    triggerNoTarget(sourceCoords);
                     markAbilityUsed(sourceCoords, !!action.isDeployAbility);
-                    setTimeout(() => setNoTargetOverlay(null), 750);
                 }
                 return;
             }
@@ -217,17 +216,15 @@ export const useAppAbilities = ({
 
         if (!hasTargets) { 
             // Rule 4: Show "No Target"
-            setNoTargetOverlay(sourceCoords);
+            triggerNoTarget(sourceCoords);
             
             // Rule 5: If part of a chain has no targets, execute the rest (chainedAction).
             if (action.chainedAction) {
                 setTimeout(() => {
-                    setNoTargetOverlay(null);
                     handleActionExecution(action.chainedAction!, sourceCoords);
                 }, 500); 
             } else {
                 markAbilityUsed(sourceCoords, !!action.isDeployAbility);
-                setTimeout(() => setNoTargetOverlay(null), 750);
             }
             return;
         }
@@ -272,8 +269,7 @@ export const useAppAbilities = ({
                 });
             } else {
                 // If dynamic count resulted in 0, we treat it as "No Targets/No Action"
-                setNoTargetOverlay(sourceCoords);
-                setTimeout(() => setNoTargetOverlay(null), 750);
+                triggerNoTarget(sourceCoords);
                 // If there's a chain, we might want to continue, but usually 0 tokens means stop.
                 markAbilityUsed(sourceCoords, !!action.isDeployAbility);
             }
@@ -345,9 +341,8 @@ export const useAppAbilities = ({
                          isDeployAbility: action.isDeployAbility
                      });
                 } else {
-                     setNoTargetOverlay(sourceCoords);
+                     triggerNoTarget(sourceCoords);
                      markAbilityUsed(sourceCoords, !!action.isDeployAbility);
-                     setTimeout(() => setNoTargetOverlay(null), 750);
                 }
                 return;
             }
@@ -420,7 +415,7 @@ export const useAppAbilities = ({
                 }
             }
         }
-    }, [gameState, localPlayerId, commandContext, markAbilityUsed, setAbilityMode, setCursorStack, setNoTargetOverlay, applyGlobalEffect, setViewingDiscard, addBoardCardStatus, updatePlayerScore, drawCard, removeBoardCardStatus, removeStatusByType]);
+    }, [gameState, localPlayerId, commandContext, markAbilityUsed, setAbilityMode, setCursorStack, triggerNoTarget, applyGlobalEffect, setViewingDiscard, addBoardCardStatus, updatePlayerScore, drawCard, removeBoardCardStatus, removeStatusByType]);
 
     // Auto-Execute GLOBAL_AUTO_APPLY actions when they appear in abilityMode
     useEffect(() => {
@@ -565,7 +560,14 @@ export const useAppAbilities = ({
 
         if (abilityMode && abilityMode.type === 'ENTER_MODE') {
             // Prevent clicking self unless specific modes allow it
-            if (abilityMode.sourceCard && abilityMode.sourceCard.id === card.id && abilityMode.mode !== 'SELECT_LINE_START' && abilityMode.mode !== 'INTEGRATOR_LINE_SELECT' && abilityMode.mode !== 'SELECT_UNIT_FOR_MOVE' && abilityMode.mode !== 'SELECT_TARGET') return;
+            if (abilityMode.sourceCard && abilityMode.sourceCard.id === card.id && 
+                abilityMode.mode !== 'SELECT_LINE_START' && 
+                abilityMode.mode !== 'INTEGRATOR_LINE_SELECT' && 
+                abilityMode.mode !== 'SELECT_UNIT_FOR_MOVE' && 
+                abilityMode.mode !== 'SELECT_TARGET' &&
+                abilityMode.mode !== 'RIOT_PUSH' &&
+                abilityMode.mode !== 'RIOT_MOVE'
+            ) return;
             
             const { mode, payload, sourceCard, sourceCoords, isDeployAbility } = abilityMode;
             if (mode === 'SELECT_LINE_START' || mode === 'SELECT_LINE_END') { handleLineSelection(boardCoords); return; }
@@ -661,6 +663,13 @@ export const useAppAbilities = ({
             }
 
             if (mode === 'RIOT_PUSH' && sourceCoords && sourceCoords.row >= 0) {
+                // Allow self-click to skip/finish
+                if (boardCoords.row === sourceCoords.row && boardCoords.col === sourceCoords.col) {
+                    markAbilityUsed(sourceCoords, isDeployAbility);
+                    setTimeout(() => setAbilityMode(null), 100);
+                    return;
+                }
+
                 const isAdj = Math.abs(boardCoords.row - sourceCoords.row) + Math.abs(boardCoords.col - sourceCoords.col) === 1;
                 const targetPlayer = gameState.players.find(p => p.id === card.ownerId);
                 const actorPlayer = gameState.players.find(p => p.id === actorId);
