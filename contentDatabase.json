@@ -60,7 +60,7 @@
       "imageUrl": "https://res.cloudinary.com/dxxh6meej/image/upload/v1764678622/Mr._Pearl_Director_of_BioSynch_mo0cil.png",
       "fallbackImage": "/images/cards/SYN_IP_DEPT_AGENT.png",
       "power": 1,
-      "ability": "Pas: Your other units in lines get +2 Power.\nDeploy: Search your deck for a unit card and put it into your hand.",
+      "ability": "Pas: Your other units in lines get +1 Power.\nDeploy: Search your deck for a unit card and put it into your hand.",
       "flavorText": "Efficiency is the only metric that matters.",
       "types": ["Unit", "Hero", "SynchroTech"],
       "faction": "SynchroTech",

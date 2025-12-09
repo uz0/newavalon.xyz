@@ -166,21 +166,21 @@ export const recalculateBoardStatuses = (gameState: GameState): Board => {
                 }
             }
 
-            // 3.2 Mr. Pearl: +2 Power to other own units in lines
+            // 3.2 Mr. Pearl: +1 Power to other own units in lines
             if (card.name.includes("Mr. Pearl")) {
                 const ownerId = card.ownerId;
                 // Row
                 for (let i = 0; i < GRID_SIZE; i++) {
                     const target = newBoard[r][i].card;
                     if (target && target.ownerId === ownerId && !target.isFaceDown && target.id !== card.id) {
-                        target.bonusPower = (target.bonusPower || 0) + 2;
+                        target.bonusPower = (target.bonusPower || 0) + 1;
                     }
                 }
                 // Col
                 for (let i = 0; i < GRID_SIZE; i++) {
                     const target = newBoard[i][c].card;
                     if (target && target.ownerId === ownerId && !target.isFaceDown && target.id !== card.id) {
-                        target.bonusPower = (target.bonusPower || 0) + 2;
+                        target.bonusPower = (target.bonusPower || 0) + 1;
                     }
                 }
             }
