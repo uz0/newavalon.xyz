@@ -681,8 +681,15 @@ export const useAppAbilities = ({
                 const dCol = boardCoords.col - sourceCoords.col;
                 const targetRow = boardCoords.row + dRow;
                 const targetCol = boardCoords.col + dCol;
+                
+                // Calculate visible grid boundaries to prevent out-of-bounds pushes
                 const gridSize = gameState.board.length;
-                if (targetRow < 0 || targetRow >= gridSize || targetCol < 0 || targetCol >= gridSize) return;
+                const offset = Math.floor((gridSize - gameState.activeGridSize) / 2);
+                const minBound = offset;
+                const maxBound = offset + gameState.activeGridSize - 1;
+
+                if (targetRow < minBound || targetRow > maxBound || targetCol < minBound || targetCol > maxBound) return;
+                
                 if (gameState.board[targetRow][targetCol].card !== null) return;
                 moveItem({ card, source: 'board', boardCoords, bypassOwnershipCheck: true }, { target: 'board', boardCoords: { row: targetRow, col: targetCol } });
                 setAbilityMode({ type: 'ENTER_MODE', mode: 'RIOT_MOVE', sourceCard: abilityMode.sourceCard, sourceCoords: abilityMode.sourceCoords, isDeployAbility: isDeployAbility, payload: { vacatedCoords: boardCoords } });
@@ -907,6 +914,13 @@ export const useAppAbilities = ({
                         ];
                         isValidMove = inters.some(i => {
                             if (!Number.isInteger(i.r) || !Number.isInteger(i.c)) return false;
+                            
+                            // Bounds check
+                            const offset = Math.floor((gameState.board.length - gameState.activeGridSize) / 2);
+                            const minBound = offset;
+                            const maxBound = offset + gameState.activeGridSize - 1;
+                            if (i.r < minBound || i.r > maxBound || i.c < minBound || i.c > maxBound) return false;
+
                             if (Math.abs(i.r - r1) + Math.abs(i.c - c1) !== 1) return false;
                             return !gameState.board[i.r][i.c].card;
                         });

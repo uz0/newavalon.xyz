@@ -106,21 +106,9 @@ export const useAppCounters = ({
                         
                         if (!isValid) return;
                         
-                        if (cursorStack.type === 'Revealed' && playerId !== effectiveActorId && !targetPlayer.isDummy) {
-                             if (localPlayerId !== null) {
-                                 requestCardReveal({ source: 'hand', ownerId: playerId, cardIndex }, localPlayerId);
-                                 if (cursorStack.sourceCoords && cursorStack.sourceCoords.row >= 0) markAbilityUsed(cursorStack.sourceCoords, cursorStack.isDeployAbility);
-                                 if (cursorStack.count > 1) {
-                                     setCursorStack(prev => prev ? ({ ...prev, count: prev.count - 1 }) : null);
-                                 } else {
-                                     if (cursorStack.chainedAction) onAction(cursorStack.chainedAction, cursorStack.sourceCoords || {row: -1, col: -1});
-                                     setCursorStack(null);
-                                 }
-                                 interactionLock.current = true;
-                                 setTimeout(() => { interactionLock.current = false; }, 300);
-                             }
-                             return; 
-                        }
+                        // NOTE: Previous 'Request Reveal' check removed to allow immediate token drop.
+                        // Dropping the token via handleDrop will add the status, revealing the card.
+
                          handleDrop({
                             card: { id: `stack`, deck: 'counter', name: '', imageUrl: '', fallbackImage: '', power: 0, ability: '', types: [] },
                             source: 'counter_panel',

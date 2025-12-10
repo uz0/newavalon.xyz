@@ -111,6 +111,13 @@ export const calculateValidTargets = (
     const board = currentGameState.board;
     const gridSize = board.length;
     
+    // Calculate visible boundaries
+    const activeSize = currentGameState.activeGridSize;
+    const offset = Math.floor((gridSize - activeSize) / 2);
+    const minBound = offset;
+    const maxBound = offset + activeSize - 1;
+    const isInBounds = (r: number, c: number) => r >= minBound && r <= maxBound && c >= minBound && c <= maxBound;
+    
     // If action is CREATE_STACK, iterate entire board and check validity
     if (action.type === 'CREATE_STACK') {
          const constraints = {
@@ -207,8 +214,8 @@ export const calculateValidTargets = (
         ];
         
         neighbors.forEach(nb => {
-            // Check bounds
-            if (nb.r >= 0 && nb.r < gridSize && nb.c >= 0 && nb.c < gridSize) {
+            // Check bounds (using visible grid bounds)
+            if (isInBounds(nb.r, nb.c)) {
                  const targetCard = board[nb.r][nb.c].card;
                  
                  // Check if opponent (Not Self AND Not Teammate)
@@ -224,8 +231,8 @@ export const calculateValidTargets = (
                          const pushRow = nb.r + dRow;
                          const pushCol = nb.c + dCol;
                          
-                         // Check dest bounds and emptiness
-                         if (pushRow >= 0 && pushRow < gridSize && pushCol >= 0 && pushCol < gridSize) {
+                         // Check dest bounds and emptiness against VISIBLE grid
+                         if (isInBounds(pushRow, pushCol)) {
                              if (!board[pushRow][pushCol].card) {
                                  targets.push({row: nb.r, col: nb.c});
                              }

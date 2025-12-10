@@ -178,6 +178,12 @@ export default function App() {
   // Lifted state for cursor stack to resolve circular dependency
   const [cursorStack, setCursorStack] = useState<CursorStackState | null>(null);
 
+  // Identify pending reveal requests for the local player
+  const pendingRevealRequest = useMemo(() => {
+      if (!localPlayerId) return null;
+      return gameState.revealRequests.find(req => req.toPlayerId === localPlayerId);
+  }, [gameState.revealRequests, localPlayerId]);
+
   // Hook for Command Logic
   const {
       playCommandCard,
@@ -1023,10 +1029,13 @@ export default function App() {
         const sourceItem: DragItem = { card, source, playerId: player?.id, cardIndex, boardCoords };
         const ownerId = card.ownerId;
         const isSpecialItem = card?.deck === DeckType.Tokens || card?.deck === 'counter';
+        
+        // Show View option if visible to local player
         if (isVisible) {
             const owner = card.ownerId ? gameState.players.find(p => p.id === card.ownerId) : undefined;
             items.push({ label: t('view'), isBold: true, onClick: () => setViewingCard({ card, player: owner }) });
         }
+        
         if (canControl) {
             if (card.deck === DeckType.Command) {
                  items.push({ label: t('play'), isBold: true, onClick: () => { closeAllModals(); playCommandCard(card, sourceItem); }});
@@ -1058,7 +1067,10 @@ export default function App() {
                 }
              }
         } 
-        else if (type === 'handCard' && !isVisible) { items.push({ label: t('requestReveal'), onClick: () => requestCardReveal({ source: 'hand', ownerId: player.id, cardIndex }, localPlayerId) }); }
+        else if (type === 'handCard' && !isVisible) { 
+            // If it's an opponent's card and NOT visible, allow request reveal.
+            items.push({ label: t('requestReveal'), onClick: () => requestCardReveal({ source: 'hand', ownerId: player.id, cardIndex }, localPlayerId) }); 
+        }
     } else if (type === 'deckPile') {
         const { player } = data;
         const canControl = player.id === localPlayerId || !!player.isDummy;
@@ -1190,6 +1202,16 @@ export default function App() {
           />
       )}
       
+      {/* Reveal Request Modal - Rendered if there is a pending request for local player */}
+      {pendingRevealRequest && (
+          <RevealRequestModal
+              fromPlayer={gameState.players.find(p => p.id === pendingRevealRequest.fromPlayerId)!}
+              cardCount={pendingRevealRequest.cardIdentifiers.length}
+              onAccept={() => respondToRevealRequest(pendingRevealRequest.fromPlayerId, true)}
+              onDecline={() => respondToRevealRequest(pendingRevealRequest.fromPlayerId, false)}
+          />
+      )}
+
       {commandModalCard && (
           <CommandModal
               isOpen={!!commandModalCard}

@@ -321,7 +321,7 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
                                  const targetClass = isTarget ? 'ring-4 ring-cyan-400 shadow-[0_0_15px_#22d3ee] rounded-md z-10' : '';
                                 
                                 return (
-                                    <div key={`${card.id}-${index}`} className={`flex bg-gray-900 border border-gray-700 rounded p-2 ${targetClass}`} draggable={canPerformActions} onDragStart={() => canPerformActions && setDraggedItem({ card, source: 'hand', playerId: player.id, cardIndex: index, isManual: true })} onDragEnd={() => setDraggedItem(null)} onContextMenu={(e) => canPerformActions && openContextMenu(e, 'handCard', { card, player, cardIndex: index })} onDoubleClick={() => onHandCardDoubleClick(player, card, index)} onClick={() => onCardClick && onCardClick(player, card, index)} data-hand-card={`${player.id},${index}`}>
+                                    <div key={`${card.id}-${index}`} className={`flex bg-gray-900 border border-gray-700 rounded p-2 ${targetClass}`} draggable={canPerformActions} onDragStart={() => canPerformActions && setDraggedItem({ card, source: 'hand', playerId: player.id, cardIndex: index, isManual: true })} onDragEnd={() => setDraggedItem(null)} onContextMenu={(e) => canPerformActions && openContextMenu(e, 'handCard', { card, player, cardIndex: index })} onDoubleClick={() => onHandCardDoubleClick(player, card, index)} onClick={() => onCardClick && onCardClick(player, card, index)} data-hand-card={`${player.id},${index}`} data-interactive="true">
                                         <div className="w-[120px] h-[120px] flex-shrink-0 mr-3">
                                             <CardComponent card={card} isFaceUp={true} playerColorMap={playerColorMap} localPlayerId={localPlayerId} imageRefreshVersion={imageRefreshVersion} disableTooltip={true} disableActiveHighlights={disableActiveHighlights} />
                                         </div>
@@ -436,7 +436,22 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
                                 const isVisible = isOwner || isOwnerDummy || isTeammate || isRevealedToAll || isRevealedToMe || isRevealedByStatus;
 
                             return (
-                                <div key={`${card.id}-${index}`} className={`aspect-square relative ${targetClass}`} draggable={canPerformActions} onDragStart={() => canPerformActions && setDraggedItem({ card, source: 'hand', playerId: player.id, cardIndex: index, isManual: true })} onDragEnd={() => setDraggedItem(null)} onContextMenu={(e) => canPerformActions && openContextMenu(e, 'handCard', { card, player, cardIndex: index })} onDoubleClick={() => onHandCardDoubleClick(player, card, index)} onClick={() => onCardClick && onCardClick(player, card, index)} data-hand-card={`${player.id},${index}`}>
+                                <div 
+                                    key={`${card.id}-${index}`} 
+                                    className={`aspect-square relative ${targetClass}`} 
+                                    draggable={canPerformActions} 
+                                    onDragStart={() => canPerformActions && setDraggedItem({ card, source: 'hand', playerId: player.id, cardIndex: index, isManual: true })} 
+                                    onDragEnd={() => setDraggedItem(null)} 
+                                    onContextMenu={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        openContextMenu(e, 'handCard', { card, player, cardIndex: index });
+                                    }} 
+                                    onDoubleClick={() => onHandCardDoubleClick(player, card, index)} 
+                                    onClick={() => onCardClick && onCardClick(player, card, index)} 
+                                    data-hand-card={`${player.id},${index}`}
+                                    data-interactive="true"
+                                >
                                     <div className="w-full h-full">
                                         <CardComponent 
                                             card={card} 

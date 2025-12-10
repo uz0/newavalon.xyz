@@ -6,19 +6,23 @@ import { shuffleDeck, PLAYER_COLOR_NAMES, TURN_PHASES, MAX_PLAYERS } from '../co
 import { decksData, countersDatabase, rawJsonData, getCardDefinitionByName, getCardDefinition, commandCardIds } from '../contentDatabase';
 import { createInitialBoard, recalculateBoardStatuses } from '../utils/boardUtils';
 
-// ... getWebSocketURL, ConnectionStatus, generateGameId, syncLastPlayed kept as is ...
+// Helper to determine the correct WebSocket URL
 const getWebSocketURL = () => {
   const customUrl = localStorage.getItem('custom_ws_url');
   if (customUrl && customUrl.trim() !== '') {
-    console.log(`Using custom WebSocket URL: ${customUrl}`);
-    return customUrl.trim();
+    let url = customUrl.trim();
+    // Auto-correct protocol if user pasted http/https
+    if (url.startsWith('https://')) {
+        url = url.replace('https://', 'wss://');
+    } else if (url.startsWith('http://')) {
+        url = url.replace('http://', 'ws://');
+    }
+    console.log(`Using custom WebSocket URL: ${url}`);
+    return url;
   }
-  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-  const hostname = window.location.hostname || 'localhost';
-  if (window.location.port && window.location.port !== '80' && window.location.port !== '443' && window.location.hostname === 'localhost') {
-    return 'wss://platinocyanic-unsceptically-belia.ngrok-free.dev';
-  }
-  return `${protocol}://${hostname}`;
+  
+  // No default address. The user must provide one in settings.
+  return null;
 };
 
 export type ConnectionStatus = 'Connecting' | 'Connected' | 'Disconnected';
@@ -143,7 +147,16 @@ export const useGameState = () => {
     if (isManualExitRef.current) return;
     if (ws.current && (ws.current.readyState === WebSocket.OPEN || ws.current.readyState === WebSocket.CONNECTING)) return;
     
-    const WS_URL = getWebSocketURL(); 
+    const WS_URL = getWebSocketURL();
+    
+    // GUARD: If no URL is configured, stop trying to connect.
+    if (!WS_URL) {
+        console.log("No WebSocket URL configured in settings. Waiting for user input.");
+        setConnectionStatus('Disconnected');
+        if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+        return;
+    }
+
     try {
       ws.current = new WebSocket(WS_URL);
     } catch (error) {
@@ -242,10 +255,13 @@ export const useGameState = () => {
   }, [setGameState, createInitialState]);
 
   const forceReconnect = useCallback(() => {
-    if (ws.current) {
+    if (ws.current && (ws.current.readyState === WebSocket.OPEN || ws.current.readyState === WebSocket.CONNECTING)) {
         ws.current.close();
+    } else {
+        // If the socket was not open (e.g. initially missing URL), we must trigger connection manually.
+        connectWebSocket();
     }
-  }, []);
+  }, [connectWebSocket]);
 
   const joinGame = useCallback((gameId: string): void => {
     isManualExitRef.current = false;
