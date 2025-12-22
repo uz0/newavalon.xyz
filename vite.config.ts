@@ -2,12 +2,15 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from 'tailwindcss'
 import autoprefixer from 'autoprefixer'
+import path from 'path'
 
 export default defineConfig(({ command }: { command: string }) => {
   const baseConfig = {
     plugins: [react()],
+    root: 'client', // Set root to client directory
     server: {
       host: true,
+      port: 8080, // Vite dev server port (for standalone use)
     },
     css: {
       devSourcemap: true,
@@ -18,16 +21,23 @@ export default defineConfig(({ command }: { command: string }) => {
         ],
       },
     },
+    resolve: {
+      alias: {
+        '@': path.resolve(__dirname, './client'),
+        '@content': path.resolve(__dirname, './server/content')
+      }
+    }
   }
 
   if (command === 'build') {
     // Эта часть сработает при запуске 'npm run build'
     return {
       ...baseConfig,
-      base: `/`, // Базовый путь для GitHub Pages
+      base: `/`, // Базовый путь
       build: {
-        outDir: 'docs',      // Папка для GitHub Pages
+        outDir: '../dist',      // Output directory relative to client root (client -> ../dist = project/dist)
         cssMinify: true,
+        emptyOutDir: true,
       },
     }
   } else {
