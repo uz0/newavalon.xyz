@@ -856,7 +856,7 @@ export const useGameState = () => {
       const newState: GameState = JSON.parse(JSON.stringify(currentState))
       const request = newState.revealRequests[requestIndex]
       if (accepted) {
-        const { toPlayerId, cardIdentifiers } = request
+        const { cardIdentifiers } = request
         for (const cardIdentifier of cardIdentifiers) {
           let cardToUpdate: Card | null = null
           if (cardIdentifier.source === 'board' && cardIdentifier.boardCoords) {

@@ -9,7 +9,7 @@ export const getCommandAction = (
   cardId: string,
   optionIndex: number,
   card: Card,
-  gameState: GameState,
+  _gameState: GameState,
   localPlayerId: number,
 ): AbilityAction[] => {
   const baseId = (card.baseId || cardId.split('_')[1] || cardId).toLowerCase()

@@ -37,14 +37,6 @@ export const canActivateAbility = (card: Card, phaseIndex: number, activeTurnPla
 
   const abilityText = card.ability || ''
 
-  // Helper to check Support prerequisite
-  const checkSupport = (text: string): boolean => {
-    if (text.toLowerCase().includes('support ⇒')) {
-      return hasStatus(card, 'Support', activeTurnPlayerId)
-    }
-    return true
-  }
-
   // === 1. CHECK DEPLOY ABILITY ===
   if (!card.deployAbilityConsumed) {
     if (hasAbilityKeyword(abilityText, 'deploy:')) {
@@ -117,7 +109,7 @@ export const getCardAbilityAction = (
 // --- Internal Helper: Get Deploy Action ---
 const getDeployAction = (
   card: Card,
-  gameState: GameState,
+  _gameState: GameState,
   ownerId: number,
   coords: { row: number, col: number },
 ): AbilityAction | null => {
@@ -166,7 +158,7 @@ const getDeployAction = (
       mode: 'SWAP_POSITIONS',
       sourceCard: card,
       sourceCoords: coords,
-      payload: { filter: (target: Card, r: number, c: number) => checkAdj(r, c, coords.row, coords.col) },
+      payload: { filter: (_target: Card, r: number, c: number) => checkAdj(r, c, coords.row, coords.col) },
     }
   }
   if (name.includes('data liberator')) {

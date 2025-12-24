@@ -26,6 +26,7 @@ export interface TranslationResource {
     tokens: string;
     counters: string;
     phase: string;
+    scoring: string;
     autoAbility: string;
     newGame: string;
     exit: string;

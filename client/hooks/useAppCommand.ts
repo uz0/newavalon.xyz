@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import type { Card, GameState, AbilityAction, CommandContext, DragItem, CounterSelectionData, CursorStackState } from '@/types'
+import type { Card, GameState, AbilityAction, CommandContext, DragItem, CounterSelectionData } from '@/types'
 import { getCommandAction } from '@/utils/commandLogic'
 
 interface UseAppCommandProps {

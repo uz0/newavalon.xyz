@@ -170,7 +170,6 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
   player,
   isLocalPlayer,
   localPlayerId,
-  isSpectator,
   isGameStarted,
   position,
   onNameChange,

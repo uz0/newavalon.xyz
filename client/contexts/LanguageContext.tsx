@@ -30,7 +30,7 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
     localStorage.setItem('app_language', lang)
   }
 
-  const t = (key: string): string => {
+  const t = (key: keyof TranslationResource['ui']): string => {
     return resources[language].ui[key] || resources['en'].ui[key] || key
   }
 
