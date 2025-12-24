@@ -416,6 +416,7 @@ export const RulesModal: React.FC<RulesModalProps> = ({ isOpen, onClose }) => {
   // Stable image refresh version for demo cards
   const demoImageRefreshVersion = useMemo(() => Date.now(), [])
 
+  // Compute sections with stable defaults
   const SECTIONS = useMemo(() => [
     { id: 'concept', title: r.conceptTitle, text: r.conceptText, visual: <AnatomyVisual /> },
     { id: 'winCondition', title: r.winConditionTitle, text: r.winConditionText, visual: <VisualWrapper><div className="text-center text-yellow-400 font-black text-8xl font-mono bg-gray-900 p-10 rounded-3xl border-8 border-yellow-500 shadow-[0_0_50px_#eab308] scale-[1.2]">30 <div className="text-lg font-bold text-gray-400 font-sans mt-2 uppercase tracking-widest">Points</div></div></VisualWrapper> },
@@ -429,7 +430,7 @@ export const RulesModal: React.FC<RulesModalProps> = ({ isOpen, onClose }) => {
     { id: 'credits', title: r.creditsTitle, text: r.creditsText, visual: null },
   ], [r, demoImageRefreshVersion])
 
-  const [activeSectionId, setActiveSectionId] = useState<string>(SECTIONS[0].id)
+  const [activeSectionId, setActiveSectionId] = useState<string>('concept')
   const activeSection = useMemo(() => SECTIONS.find(s => s.id === activeSectionId) || SECTIONS[0], [activeSectionId, SECTIONS])
 
   if (!isOpen) {

@@ -73,7 +73,33 @@ export function handleTriggerHighlight(ws, data) {
  */
 export function handleTriggerNoTarget(ws, data) {
   try {
+    // Input validation
+    if (!data || typeof data !== 'object') {
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        message: 'Invalid data format'
+      }));
+      return;
+    }
+
     const { gameId, coords, timestamp } = data;
+
+    if (!gameId || typeof gameId !== 'string') {
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        message: 'Invalid or missing gameId'
+      }));
+      return;
+    }
+
+    if (!coords || typeof coords !== 'object' || typeof coords.row !== 'number' || typeof coords.col !== 'number') {
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        message: 'Invalid or missing coords'
+      }));
+      return;
+    }
+
     const gameState = getGameState(gameId);
 
     if (!gameState) {
@@ -109,7 +135,33 @@ export function handleTriggerNoTarget(ws, data) {
  */
 export function handleTriggerFloatingText(ws, data) {
   try {
+    // Input validation
+    if (!data || typeof data !== 'object') {
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        message: 'Invalid data format'
+      }));
+      return;
+    }
+
     const { gameId, floatingTextData } = data;
+
+    if (!gameId || typeof gameId !== 'string') {
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        message: 'Invalid or missing gameId'
+      }));
+      return;
+    }
+
+    if (!floatingTextData || typeof floatingTextData !== 'object') {
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        message: 'Invalid or missing floatingTextData'
+      }));
+      return;
+    }
+
     const gameState = getGameState(gameId);
 
     if (!gameState) {
@@ -144,7 +196,33 @@ export function handleTriggerFloatingText(ws, data) {
  */
 export function handleTriggerFloatingTextBatch(ws, data) {
   try {
+    // Input validation
+    if (!data || typeof data !== 'object') {
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        message: 'Invalid data format'
+      }));
+      return;
+    }
+
     const { gameId, batch } = data;
+
+    if (!gameId || typeof gameId !== 'string') {
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        message: 'Invalid or missing gameId'
+      }));
+      return;
+    }
+
+    if (!Array.isArray(batch)) {
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        message: 'Invalid or missing batch array'
+      }));
+      return;
+    }
+
     const gameState = getGameState(gameId);
 
     if (!gameState) {

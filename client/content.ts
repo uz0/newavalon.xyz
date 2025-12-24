@@ -84,7 +84,9 @@ function buildDecksData(): DecksData {
 
       // Add the specified quantity of each card to the deck
       for (let i = 0; i < deckEntry.quantity; i++) {
-        const cardKey = deckEntry.cardId.toUpperCase().replace(/-/g, '_')
+        // Use a collision-safe key encoding (base64url-like)
+        const safeCardId = deckEntry.cardId.replace(/-/g, '--DASH--')
+        const cardKey = safeCardId.toUpperCase()
 
         if (isCommandCard) {
           deckCardList.push({
@@ -110,12 +112,9 @@ function buildDecksData(): DecksData {
   }
 
   // Add the special "Tokens" deck, which is built from the token database.
-  // Explicitly ensures that all tokens have the 'Device' type added to their list.
+  // Tokens use their defined types, with an empty array fallback (not hardcoded).
   builtDecks[DeckType.Tokens] = Array.from(tokenDatabase.entries()).map(([tokenId, tokenDef]) => {
-    const types = tokenDef.types ? [...tokenDef.types] : ['Unit']
-    if (!types.includes('Device')) {
-      types.push('Device')
-    }
+    const types = tokenDef.types ? [...tokenDef.types] : []
 
     return {
       id: `TKN_${tokenDef.name.toUpperCase().replace(/\s/g, '_')}`,

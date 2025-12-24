@@ -68,7 +68,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
               onChange={(e) => setServerUrl(e.target.value)}
               placeholder="e.g., ws://localhost:8080 or wss://my-server.com"
               className="w-full bg-gray-700 border border-gray-600 text-white font-mono rounded-lg p-2 focus:ring-indigo-500 focus:border-indigo-500"
-              onKeyUp={(e) => e.key === 'Enter' && handleSave()}
+              onKeyDown={(e) => e.key === 'Enter' && handleSave()}
             />
           </div>
 

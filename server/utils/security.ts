@@ -43,6 +43,13 @@ export function validateGameStateSize(gameState) {
  * Check if message size is within limits
  */
 export function validateMessageSize(message) {
+  // Guard against null/undefined
+  if (message == null) {
+    return true // Treat null/undefined as empty message
+  }
+  if (typeof message !== 'string') {
+    return false
+  }
   return message.length <= CONFIG.MAX_MESSAGE_SIZE;
 }
 

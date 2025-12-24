@@ -14,7 +14,7 @@ const formatLine = (line: string): (React.ReactNode | string | null)[] => {
   const keywords = {
     // Keywords are formatted: one group bold, another group italic, matching is case-insensitive.
     // All lowercase since matching is case-insensitive
-    bold: ['deploy', 'setup', 'commit', 'support', 'pas'],
+    bold: ['deploy', 'setup', 'commit', 'support', 'pass'],
     italic: ['threat', 'aim', 'exploit', 'stun', 'shield',
       'gain', 'point', 'points', 'reveal', 'move', 'draw', 'push', 'sacrifice', 'discard'],
   }

@@ -60,11 +60,25 @@ async function createDevServer() {
   // Graceful shutdown
   const gracefulShutdown = async (signal: string) => {
     logger.info(`${signal} received, shutting down gracefully`);
-    await vite.close();
-    server.close(() => {
-      logger.info('Process terminated');
-      process.exit(0);
-    });
+
+    // Set a forced exit timeout in case server.close() hangs
+    const shutdownTimeout = setTimeout(() => {
+      logger.warn('Forced shutdown after timeout');
+      process.exit(1);
+    }, 10000); // 10 second timeout
+
+    try {
+      await vite.close();
+      server.close(() => {
+        clearTimeout(shutdownTimeout);
+        logger.info('Process terminated');
+        process.exit(0);
+      });
+    } catch (error) {
+      logger.error('Error during shutdown:', error);
+      clearTimeout(shutdownTimeout);
+      process.exit(1);
+    }
   };
 
   process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));

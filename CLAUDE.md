@@ -45,7 +45,7 @@ Before commit **MANDATORY**:
 
 ## Project Structure
 
-```
+```text
 /
 ├── client/                       # Client-side application
 │   ├── components/               # React UI components (24 files)
@@ -134,6 +134,7 @@ Before commit **MANDATORY**:
 ## Key Dependencies
 
 ### Core Runtime
+
 - **React 18.2.0**: UI framework (components + hooks)
 - **Express 5.2.1**: HTTP server + middleware
 - **express-ws 5.0.2**: WebSocket integration
@@ -142,6 +143,7 @@ Before commit **MANDATORY**:
 - **Vite 5.2.11**: Build tool + dev server + HMR
 
 ### Build & Styling
+
 - **@vitejs/plugin-react 4.2.1**: React JSX support
 - **Tailwind CSS 3.4.3**: Utility-first CSS framework
 - **PostCSS 8.4.38**: CSS processing pipeline

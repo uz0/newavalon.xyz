@@ -55,7 +55,7 @@
       "faction": "SynchroTech",
       "allowedPanels": ["DECK_BUILDER"]
     },
-	"mrPearlDoF": {
+    "mrPearlDoF": {
       "name": "Mr. Pearl, Director of BioSynch",
       "imageUrl": "https://res.cloudinary.com/dxxh6meej/image/upload/v1764678622/Mr._Pearl_Director_of_BioSynch_mo0cil.png",
       "fallbackImage": "/images/cards/SYN_IP_DEPT_AGENT.png",
@@ -65,7 +65,7 @@
       "types": ["Unit", "Hero", "SynchroTech"],
       "faction": "SynchroTech",
       "allowedPanels": ["DECK_BUILDER"]
-	},
+    },
 
     "recklessProvocateur": {
       "name": "Reckless Provocateur",

@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react'
 import type { Player, Card as CardType, DragItem, PlayerColor } from '@/types'
 import { Card } from './Card'
@@ -44,8 +43,8 @@ export const DeckViewModal: React.FC<DeckViewModalProps> = ({ isOpen, onClose, t
     }
   }
 
-  const handleDragLeave = (_e: React.DragEvent) => {
-    if (draggedCardId !== null) {
+  const handleDragLeave = (e: React.DragEvent) => {
+    if (draggedCardId !== null && e.target === modalRef.current) {
       dragOverCountRef.current--
       if (dragOverCountRef.current <= 0) {
         onClose()

@@ -215,7 +215,10 @@ export const useAppAbilities = ({
             // applyGlobalEffect is singular. We loop if needed or just call it.
             const count = action.payload.count || 1
             // Allow payload to override ownerId (for False Orders Mode 2)
-            const addedBy = action.payload.ownerId !== undefined ? action.payload.ownerId : action.sourceCard?.ownerId!
+            // Use localPlayerId as safe fallback if sourceCard is undefined
+            const addedBy = action.payload.ownerId !== undefined
+              ? action.payload.ownerId
+              : (action.sourceCard?.ownerId ?? localPlayerId)
 
             for (let i = 0; i < count; i++) {
               applyGlobalEffect(sourceCoords, targets, tokenType, addedBy, !!action.isDeployAbility)
@@ -1134,7 +1137,8 @@ export const useAppAbilities = ({
       }
 
       if (isValidMove && currentCardCoords) {
-        if (payload.allowSelf && boardCoords.row === currentCardCoords.row && boardCoords.col === currentCardCoords.col) { } else {
+        const isSelfMove = payload.allowSelf && boardCoords.row === currentCardCoords.row && boardCoords.col === currentCardCoords.col
+        if (!isSelfMove) {
           const liveCard = gameState.board[currentCardCoords.row][currentCardCoords.col].card
           if (liveCard) {
             moveItem({ card: liveCard, source: 'board', boardCoords: currentCardCoords, bypassOwnershipCheck: true }, { target: 'board', boardCoords })

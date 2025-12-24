@@ -1,5 +1,11 @@
 import type { GameState, Card, CommandContext, AbilityAction } from '@/types'
 
+// Constants for target validation
+const TARGET_OPPONENTS = -1
+const TARGET_MOVED_OWNER = -2
+const ADJACENT_DISTANCE = 1
+const RANGE_TWO_DISTANCE = 2
+
 /**
  * Validates if a specific target meets the constraints.
  */
@@ -24,7 +30,7 @@ export const validateTarget = (
   const { card, ownerId, location } = target
 
   // 1. Target Owner (Inclusive)
-  if (constraints.targetOwnerId !== undefined && constraints.targetOwnerId !== -1 && constraints.targetOwnerId !== -2 && constraints.targetOwnerId !== ownerId) {
+  if (constraints.targetOwnerId !== undefined && constraints.targetOwnerId !== TARGET_OPPONENTS && constraints.targetOwnerId !== TARGET_MOVED_OWNER && constraints.targetOwnerId !== ownerId) {
     return false
   }
 
@@ -34,8 +40,8 @@ export const validateTarget = (
   }
 
   // 3. Only Opponents
-  // -1 in targetOwnerId also implies Only Opponents
-  if (constraints.onlyOpponents || constraints.targetOwnerId === -1) {
+  // TARGET_OPPONENTS in targetOwnerId also implies Only Opponents
+  if (constraints.onlyOpponents || constraints.targetOwnerId === TARGET_OPPONENTS) {
     // Cannot be self
     if (ownerId === userPlayerId) {
       return false
@@ -97,7 +103,7 @@ export const validateTarget = (
   if (constraints.mustBeAdjacentToSource && constraints.sourceCoords && target.boardCoords) {
     const { row: r1, col: c1 } = constraints.sourceCoords
     const { row: r2, col: c2 } = target.boardCoords
-    if (Math.abs(r1 - r2) + Math.abs(c1 - c2) !== 1) {
+    if (Math.abs(r1 - r2) + Math.abs(c1 - c2) !== ADJACENT_DISTANCE) {
       return false
     }
   }
@@ -348,26 +354,26 @@ export const calculateValidTargets = (
             isValidLoc = true
           } else if (payload.range === 'line') {
             isValidLoc = r === sourceCoords.row || c === sourceCoords.col
-          } else if (payload.range === 2) {
-            // Range 2: 1 or 2 cells away.
+          } else if (payload.range === RANGE_TWO_DISTANCE) {
+            // Range RANGE_TWO_DISTANCE: ADJACENT_DISTANCE or RANGE_TWO_DISTANCE cells away.
             const dRow = Math.abs(r - sourceCoords.row)
             const dCol = Math.abs(c - sourceCoords.col)
             const dist = dRow + dCol
 
-            if (dist === 1) {
+            if (dist === ADJACENT_DISTANCE) {
               isValidLoc = true
-            } else if (dist === 2) {
-              // Logic for 2 cells: must be reachable via an empty cell (or straight line 2).
-              // BFS Depth 2 check.
+            } else if (dist === RANGE_TWO_DISTANCE) {
+              // Logic for RANGE_TWO_DISTANCE cells: must be reachable via an empty cell (or straight line RANGE_TWO_DISTANCE).
+              // BFS Depth RANGE_TWO_DISTANCE check.
               // Candidates for intermediate step:
               const inters = []
-              if (dRow === 2 && dCol === 0) {
+              if (dRow === RANGE_TWO_DISTANCE && dCol === 0) {
                 inters.push({ r: (r + sourceCoords.row) / 2, c: c })
               } // Straight vertical
-              else if (dRow === 0 && dCol === 2) {
+              else if (dRow === 0 && dCol === RANGE_TWO_DISTANCE) {
                 inters.push({ r: r, c: (c + sourceCoords.col) / 2 })
               } // Straight horizontal
-              else if (dRow === 1 && dCol === 1) { // Diagonal (L-shape)
+              else if (dRow === ADJACENT_DISTANCE && dCol === ADJACENT_DISTANCE) { // Diagonal (L-shape)
                 inters.push({ r: r, c: sourceCoords.col })
                 inters.push({ r: sourceCoords.row, c: c })
               }
@@ -383,7 +389,7 @@ export const calculateValidTargets = (
             }
           } else {
             // Default to Adjacent
-            isValidLoc = Math.abs(r - sourceCoords.row) + Math.abs(c - sourceCoords.col) === 1
+            isValidLoc = Math.abs(r - sourceCoords.row) + Math.abs(c - sourceCoords.col) === ADJACENT_DISTANCE
           }
 
           if ((isEmpty && isValidLoc) || (payload.allowSelf && isSame)) {

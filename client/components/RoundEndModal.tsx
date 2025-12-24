@@ -5,8 +5,9 @@ import React from 'react'
 import type { GameState, Player } from '@/types'
 import { PLAYER_COLORS } from '@/constants'
 
-// Maximum number of rounds in a match
+// Constants
 const MAX_ROUNDS = 5
+const ROUND_WIN_MEDAL_URL = 'https://res.cloudinary.com/dxxh6meej/image/upload/v1764252181/medal_rgbw8d.png'
 
 interface RoundEndModalProps {
     gameState: GameState;
@@ -26,8 +27,6 @@ export const RoundEndModal: React.FC<RoundEndModalProps> = ({ gameState, onConfi
   // Calculate next round target dynamically
   const nextRound = gameState.currentRound + 1
   const nextTarget = (nextRound * 10) + 10
-
-  const medalUrl = 'https://res.cloudinary.com/dxxh6meej/image/upload/v1764252181/medal_rgbw8d.png'
 
   // Sort players based on starting player for the round/game rotation
   // Find index of starting player
@@ -79,7 +78,7 @@ export const RoundEndModal: React.FC<RoundEndModalProps> = ({ gameState, onConfi
                   {totalMedals > 0 && Array.from({ length: totalMedals }).map((_, i) => (
                     <img
                       key={i}
-                      src={medalUrl}
+                      src={ROUND_WIN_MEDAL_URL}
                       alt="Winner"
                       className="w-6 h-6 object-contain drop-shadow-md"
                       title="Round Winner"

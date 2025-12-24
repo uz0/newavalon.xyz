@@ -157,9 +157,17 @@ export const useAppCounters = ({
           const [rowStr, colStr] = coords.split(',')
           const row = parseInt(rowStr, 10)
           const col = parseInt(colStr, 10)
-          const targetCard = gameState.board[row][col].card
+          // Add bounds check before accessing board
+          if (
+            !isNaN(row) && !isNaN(col) &&
+            row >= 0 && row < gameState.board.length &&
+            gameState.board[row] &&
+            col >= 0 && col < gameState.board[row].length &&
+            gameState.board[row][col]
+          ) {
+            const targetCard = gameState.board[row][col].card
 
-          if (targetCard?.ownerId !== undefined) {
+            if (targetCard?.ownerId !== undefined) {
             const constraints = {
               targetOwnerId: cursorStack.targetOwnerId,
               excludeOwnerId: cursorStack.excludeOwnerId,
@@ -264,6 +272,7 @@ export const useAppCounters = ({
             }, 300)
           }
         }
+        } // End of bounds check
       } else {
         const isOverModal = target?.closest('.counter-modal-content')
         if (cursorStack.isDragging) {

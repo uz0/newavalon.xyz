@@ -318,15 +318,15 @@ export const DeckBuilderModal: React.FC<DeckBuilderModalProps> = ({ isOpen, onCl
                   {isTypeDropdownOpen && (
                     <div className="absolute top-full left-0 mt-1 w-48 bg-gray-800 border border-gray-600 rounded shadow-xl z-50 max-h-60 overflow-y-auto p-1">
                       <div className="px-2 py-1 text-xs text-gray-400 border-b border-gray-700 mb-1">Match ALL selected</div>
-                      {availableTypes.map(type => (
-                        <label key={type} className="flex items-center px-2 py-1.5 hover:bg-gray-700 rounded cursor-pointer">
+                      {availableTypes.map(cardType => (
+                        <label key={cardType} className="flex items-center px-2 py-1.5 hover:bg-gray-700 rounded cursor-pointer">
                           <input
                             type="checkbox"
-                            checked={selectedTypes.includes(type)}
-                            onChange={() => handleTypeToggle(type)}
+                            checked={selectedTypes.includes(cardType)}
+                            onChange={() => handleTypeToggle(cardType)}
                             className="form-checkbox h-4 w-4 text-indigo-600 rounded border-gray-500 bg-gray-700 focus:ring-indigo-500"
                           />
-                          <span className="ml-2 text-sm text-gray-200">{type}</span>
+                          <span className="ml-2 text-sm text-gray-200">{cardType}</span>
                         </label>
                       ))}
                     </div>

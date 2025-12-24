@@ -81,7 +81,7 @@ const JoinGameModal: React.FC<JoinGameModalProps> = memo(({ isOpen, onClose, onJ
               onChange={handleInputChange}
               placeholder={t('enterGameId')}
               className="flex-grow bg-gray-700 border border-gray-600 text-white font-mono rounded-lg p-2 focus:ring-indigo-500 focus:border-indigo-500"
-              onKeyUp={(e) => e.key === 'Enter' && handleJoinWithCode()}
+              onKeyDown={(e) => e.key === 'Enter' && handleJoinWithCode()}
             />
             <button
               onClick={handleJoinWithCode}

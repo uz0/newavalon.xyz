@@ -45,7 +45,7 @@ const syncLastPlayed = (board: Board, player: Player) => {
   while (player.boardHistory.length > 0 && !found) {
     const lastId = player.boardHistory[player.boardHistory.length - 1]
     for (let r = 0; r < board.length; r++) {
-      for (let c = 0; c < board.length; c++) {
+      for (let c = 0; c < board[r].length; c++) {
         if (board[r][c].card?.id === lastId) {
           if (!board[r][c].card!.statuses) {
 board[r][c].card!.statuses = []
@@ -144,21 +144,17 @@ export const useGameState = () => {
   }, [localPlayerId])
 
   const updateState = useCallback((newStateOrFn: GameState | ((prevState: GameState) => GameState)) => {
-    // Compute new state once
-    const currentState = typeof newStateOrFn === 'function'
-      ? newStateOrFn(gameStateRef.current)
-      : newStateOrFn
-
-    setGameState(prevState => {
-      // If the function was passed, apply it to prevState for consistency
+    setGameState((prevState) => {
+      // Compute the new state once, using prevState from React for consistency
       const newState = typeof newStateOrFn === 'function' ? newStateOrFn(prevState) : newStateOrFn
+
+      // Send WebSocket message with the computed state
+      if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+        ws.current.send(JSON.stringify({ type: 'UPDATE_STATE', gameState: newState }))
+      }
+
       return newState
     })
-
-    // Send WebSocket message with the computed state
-    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-      ws.current.send(JSON.stringify({ type: 'UPDATE_STATE', gameState: currentState }))
-    }
   }, [])
 
   // ... WebSocket logic (connectWebSocket, forceReconnect, joinGame, etc.) kept as is ...

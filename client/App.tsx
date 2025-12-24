@@ -786,15 +786,24 @@ const App = memo(function App() {
 
       if (actionToProcess.mode === 'SELECT_CELL' && commandContext.lastMovedCardCoords) {
         const { row, col } = commandContext.lastMovedCardCoords
-        const contextCard = gameState.board[row][col].card
-        // If we have a context card on the board, inject it as the source for the move.
-        // This is crucial for commands where Step 1 selects a unit and Step 2 moves it.
-        if (contextCard) {
-          actionToProcess.sourceCard = contextCard
-          actionToProcess.sourceCoords = commandContext.lastMovedCardCoords
-          // Force recordContext to true so the subsequent step (e.g. Stun in False Orders Mode 2)
-          // knows where the card ended up.
-          actionToProcess.recordContext = true
+        // Add bounds/null checks before accessing the board
+        if (
+          typeof row === 'number' && typeof col === 'number' &&
+          row >= 0 && row < gameState.board.length &&
+          gameState.board[row] &&
+          col >= 0 && col < gameState.board[row].length &&
+          gameState.board[row][col]
+        ) {
+          const contextCard = gameState.board[row][col].card
+          // If we have a context card on the board, inject it as the source for the move.
+          // This is crucial for commands where Step 1 selects a unit and Step 2 moves it.
+          if (contextCard) {
+            actionToProcess.sourceCard = contextCard
+            actionToProcess.sourceCoords = commandContext.lastMovedCardCoords
+            // Force recordContext to true so the subsequent step (e.g. Stun in False Orders Mode 2)
+            // knows where the card ended up.
+            actionToProcess.recordContext = true
+          }
         }
       }
 

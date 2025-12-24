@@ -32,7 +32,7 @@ npm install
 
 ### Commit Message Format
 
-```
+```text
 VERSION Summary of changes
 
 - Details

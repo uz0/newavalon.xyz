@@ -217,7 +217,6 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
   const isFirstPlayer = startingPlayerId === player.id
   const firstPlayerIconUrl = 'https://res.cloudinary.com/dxxh6meej/image/upload/v1763478810/LastPlayed_bfkbwb.png'
   const ROUND_WIN_MEDAL_URL = 'https://res.cloudinary.com/dxxh6meej/image/upload/v1764252181/medal_rgbw8d.png'
-
   const shouldFlashDeck = isActiveTurn && currentPhase === 0
 
   const handleDeckSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -276,7 +275,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
             {winCount > 0 && Array.from({ length: winCount }).map((_, i) => (
               <img key={`win-${i}`} src={ROUND_WIN_MEDAL_URL} alt="Round Winner" className="w-6 h-6 drop-shadow-md mr-2 flex-shrink-0" title="Round Winner" />
             ))}
-            <input type="checkbox" checked={isActiveTurn} onChange={() => onToggleActiveTurn(player.id)} disabled={!isLocalPlayer && !player.isDummy} className="w-6 h-6 text-yellow-400 bg-gray-700 border-gray-600 rounded cursor-pointer flex-shrink-0" title="Active Turn" />
+            <input type="checkbox" checked={isActiveTurn} onChange={() => onToggleActiveTurn(player.id)} disabled={!isLocalPlayer && !player.isDummy} className={`w-6 h-6 text-yellow-400 bg-gray-700 border-gray-600 rounded flex-shrink-0 ${!isLocalPlayer && !player.isDummy ? 'cursor-default' : 'cursor-pointer'}`} title="Active Turn" />
           </div>
         </div>
 

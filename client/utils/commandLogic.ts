@@ -342,7 +342,7 @@ export const getCommandAction = (
     }
   }
   // --- LINE BREACH (Mobilization 1) ---
-  else if (baseId.includes('mobilization1') || baseId.includes('linebreach') || baseId.includes('mobilization')) {
+  else if (baseId.includes('mobilization1') || baseId.includes('linebreach')) {
     if (isMain) {
       actions.push({
         type: 'ENTER_MODE',

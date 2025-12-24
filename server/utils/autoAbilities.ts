@@ -21,7 +21,12 @@ const hasAbilityKeyword = (ability: string, keyword: string): boolean => {
   if (!ability) {
     return false
   }
-  return ability.toLowerCase().includes(keyword.toLowerCase())
+  // Use word-boundary regex to avoid substring matches (e.g., "deploy:" matching "redeploy:")
+  // Escape special regex characters in the keyword
+  const escapedKeyword = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  // Create a pattern that matches the keyword as a whole word (case-insensitive)
+  const pattern = new RegExp(`(^|\\W)${escapedKeyword}($|\\W)`, 'i')
+  return pattern.test(ability)
 }
 
 /**

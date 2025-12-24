@@ -1,4 +1,3 @@
-
 import React, { createContext, useState, useContext, useEffect } from 'react'
 import type { ReactNode } from 'react'
 import { resources } from '@/locales'
@@ -20,9 +19,9 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [language, setLanguage] = useState<LanguageCode>('en')
 
   useEffect(() => {
-    const savedLang = localStorage.getItem('app_language') as LanguageCode
-    if (savedLang && resources[savedLang]) {
-      setLanguage(savedLang)
+    const savedLang = localStorage.getItem('app_language')
+    if (savedLang && savedLang in resources) {
+      setLanguage(savedLang as LanguageCode)
     }
   }, [])
 
@@ -52,7 +51,7 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
     return resources[language].counters[type] || resources['en'].counters[type]
   }
 
-  const isRTL = language === 'ar'
+  const isRTL = false // Current languages (en, ru, sr) are all LTR
 
   return (
     <LanguageContext.Provider value={{

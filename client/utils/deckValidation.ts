@@ -39,11 +39,17 @@ export const validateDeckData = (data: any): DeckValidationResult => {
     return { isValid: false, error: `Deck exceeds the ${MAX_DECK_SIZE} card limit (found ${totalCards} cards).` }
   }
 
+  // Sanitize cards array to only include required properties
+  const sanitizedCards = data.cards.map((card: any) => ({
+    cardId: card.cardId,
+    quantity: card.quantity
+  }))
+
   return {
     isValid: true,
     deckFile: {
       deckName: data.deckName,
-      cards: data.cards
+      cards: sanitizedCards
     }
   }
 }

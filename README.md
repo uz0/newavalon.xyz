@@ -64,7 +64,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines and workflow.
 
 ### Project Structure
 
-```
+```text
 /
 ├── client/                   # React frontend
 │   ├── components/          # UI components
