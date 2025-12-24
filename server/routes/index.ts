@@ -2,7 +2,6 @@
  * @file API routes configuration
  */
 
-import express from 'express';
 import { gameRoutes } from './game.js';
 import { contentRoutes } from './content.js';
 import { healthRoutes } from './health.js';

@@ -6,7 +6,7 @@ import type { LanguageCode, TranslationResource, CardTranslation } from '@/local
 interface LanguageContextType {
   language: LanguageCode;
   setLanguage: (lang: LanguageCode) => void;
-  t: (key: string) => string;
+  t: (key: keyof TranslationResource['ui']) => string;
   getCardTranslation: (cardId: string) => CardTranslation | undefined;
   getCounterTranslation: (type: string) => { name: string; description: string } | undefined;
   resources: TranslationResource;

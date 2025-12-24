@@ -46,15 +46,8 @@
   "exclude": [
     "node_modules",
     "dist",
+    "dist-client",
     "docs",
     "server"
-  ],
-  "references": [
-    {
-      "path": "./tsconfig.client.json"
-    },
-    {
-      "path": "./tsconfig.server.json"
-    }
   ]
 }

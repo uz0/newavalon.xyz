@@ -182,15 +182,17 @@ export const recalculateBoardStatuses = (gameState: GameState): Board => {
       if (card.id === 'mrPearlDoF') {
         const ownerId = card.ownerId
         // Use a Set to track cards that have already received the bonus
+        // Use coordinate-based keys to uniquely identify each card instance
         const processedCards = new Set<string>()
 
         // Row
         for (let i = 0; i < GRID_SIZE; i++) {
           const target = newBoard[r][i].card
           if (target && target.ownerId === ownerId && !target.isFaceDown && target.id !== card.id) {
-            if (!processedCards.has(target.id)) {
+            const cardKey = `${r}-${i}`
+            if (!processedCards.has(cardKey)) {
               target.bonusPower = (target.bonusPower || 0) + 1
-              processedCards.add(target.id)
+              processedCards.add(cardKey)
             }
           }
         }
@@ -198,9 +200,10 @@ export const recalculateBoardStatuses = (gameState: GameState): Board => {
         for (let i = 0; i < GRID_SIZE; i++) {
           const target = newBoard[i][c].card
           if (target && target.ownerId === ownerId && !target.isFaceDown && target.id !== card.id) {
-            if (!processedCards.has(target.id)) {
+            const cardKey = `${i}-${c}`
+            if (!processedCards.has(cardKey)) {
               target.bonusPower = (target.bonusPower || 0) + 1
-              processedCards.add(target.id)
+              processedCards.add(cardKey)
             }
           }
         }

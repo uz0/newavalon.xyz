@@ -18,7 +18,7 @@ interface MainMenuProps {
     handleJoinGame: (gameId: string) => void;
     gamesList: { gameId: string; playerCount: number }[];
     isDeckBuilderOpen: boolean;
-    setViewingCard: (viewing: { card: Card; player?: Player } | null) => void;
+    setViewingCard: React.Dispatch<React.SetStateAction<{ card: Card; player?: Player } | null>>;
     isSettingsModalOpen: boolean;
     handleSaveSettings: (url: string) => void;
     isRulesModalOpen: boolean;

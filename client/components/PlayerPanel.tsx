@@ -203,7 +203,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
   const { t } = useLanguage()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const canPerformActions = isLocalPlayer || player.isDummy
+  const canPerformActions: boolean = isLocalPlayer || !!player.isDummy
 
   const isActiveTurn = activeTurnPlayerId === player.id
   const isTeammate = localPlayerTeamId !== undefined && player.teamId === localPlayerTeamId && !isLocalPlayer
@@ -443,7 +443,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
               const isOwnerDummy = owner?.isDummy
               const isOwner = localPlayerId === card.ownerId
 
-              const isVisible = isOwner || isOwnerDummy || isTeammate || isRevealedToAll || isRevealedToMe || isRevealedByStatus
+              const isVisible: boolean = isOwner || !!isOwnerDummy || isTeammate || isRevealedToAll || !!isRevealedToMe || !!isRevealedByStatus
 
               return (
                 <div

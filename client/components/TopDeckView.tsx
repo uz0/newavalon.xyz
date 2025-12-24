@@ -1,5 +1,5 @@
 import React, { memo, useState, useEffect, useCallback, useMemo } from 'react'
-import type { Card as CardType, PlayerColor, Player } from '@/types'
+import type { Card as CardType, PlayerColor, Player, ContextMenuItem } from '@/types'
 import { Card } from './Card'
 import { ContextMenu } from './ContextMenu'
 import { useLanguage } from '@/contexts/LanguageContext'
@@ -109,7 +109,7 @@ const TopDeckView: React.FC<TopDeckViewProps> = memo(({
     setDraggedIndex(null)
   }, [draggedIndex, visibleCards, onReorder, player.id])
 
-  const contextMenuItems = useMemo(() => {
+  const contextMenuItems: ContextMenuItem[] = useMemo(() => {
     if (!contextMenu) {
       return []
     }

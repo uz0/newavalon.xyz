@@ -601,7 +601,7 @@ export const useAppAbilities = ({
   }, [abilityMode, gameState, localPlayerId, scoreLine, nextPhase, setAbilityMode, modifyBoardCardPower, markAbilityUsed, scoreDiagonal, updatePlayerScore])
 
   const handleBoardCardClick = useCallback((card: Card, boardCoords: { row: number, col: number }) => {
-    if (setPlayMode && cursorStack) {
+    if (setPlayMode !== null && setPlayMode !== undefined && cursorStack) {
       return
     }
     if (interactionLock.current) {
@@ -710,8 +710,9 @@ export const useAppAbilities = ({
           }
 
           const cell = gameState.board[r1][c]
+          const targetCard = cell.card
           // Check if Ally
-          if (cell.card && (cell.card.ownerId === actorId || (gameState.players.find(p => p.id === actorId)?.teamId !== undefined && gameState.players.find(p => p.id === cell.card.ownerId)?.teamId === gameState.players.find(p => p.id === actorId)?.teamId))) {
+          if (targetCard && (targetCard.ownerId === actorId || (gameState.players.find(p => p.id === actorId)?.teamId !== undefined && gameState.players.find(p => p.id === targetCard.ownerId)?.teamId === gameState.players.find(p => p.id === actorId)?.teamId))) {
             modifyBoardCardPower({ row: r1, col: c }, 1)
           }
         }
@@ -723,7 +724,8 @@ export const useAppAbilities = ({
           }
 
           const cell = gameState.board[r][c1]
-          if (cell.card && (cell.card.ownerId === actorId || (gameState.players.find(p => p.id === actorId)?.teamId !== undefined && gameState.players.find(p => p.id === cell.card.ownerId)?.teamId === gameState.players.find(p => p.id === actorId)?.teamId))) {
+          const targetCard = cell.card
+          if (targetCard && (targetCard.ownerId === actorId || (gameState.players.find(p => p.id === actorId)?.teamId !== undefined && gameState.players.find(p => p.id === targetCard.ownerId)?.teamId === gameState.players.find(p => p.id === actorId)?.teamId))) {
             modifyBoardCardPower({ row: r, col: c1 }, 1)
           }
         }

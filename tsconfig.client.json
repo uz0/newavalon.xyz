@@ -13,8 +13,7 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "react-jsx",
-    "composite": true,
-    "outDir": "./dist-client",
+    "noEmit": true,
     "baseUrl": ".",
     "paths": {
       "@/*": ["./client/*"],

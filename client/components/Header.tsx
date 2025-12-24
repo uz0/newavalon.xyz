@@ -5,6 +5,7 @@ import type { GridSize } from '@/types'
 import type { ConnectionStatus } from '@/hooks/useGameState'
 import { TURN_PHASES, MAX_PLAYERS } from '@/constants'
 import { useLanguage } from '@/contexts/LanguageContext'
+import type { TranslationResource } from '@/locales/types'
 
 interface HeaderProps {
   gameId: string | null;
@@ -37,7 +38,7 @@ interface HeaderProps {
   turnNumber?: number;
 }
 
-const StatusIndicator = memo<{ connectionStatus: ConnectionStatus; t: (key: string) => string }>(({ connectionStatus, t }) => {
+const StatusIndicator = memo<{ connectionStatus: ConnectionStatus; t: (key: keyof TranslationResource['ui']) => string }>(({ connectionStatus, t }) => {
   const config = useMemo(() => {
     switch (connectionStatus) {
     case 'Connected':
@@ -66,7 +67,7 @@ const RoundTracker = memo<{
   onMouseLeave: () => void;
   showTooltip: boolean;
   tooltipPos: { x: number; y: number };
-  t: (key: string) => string;
+  t: (key: keyof TranslationResource['ui']) => string;
     }>(({ currentRound, turnNumber, onMouseEnter, onMouseLeave, showTooltip, tooltipPos, t }) => {
       const threshold = useMemo(() => (currentRound * 10) + 10, [currentRound])
 

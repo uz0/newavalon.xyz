@@ -149,7 +149,7 @@ const GridCell = memo<{
       const targetClasses = isInteractive ? 'ring-4 ring-cyan-400 shadow-[0_0_15px_#22d3ee] cursor-pointer z-10' : ''
       const cellClasses = `bg-board-cell-active ${isOver && canDrop ? 'bg-indigo-400 opacity-80' : ''} ${isInPlayMode && isOccupied ? 'cursor-not-allowed' : ''} ${targetClasses}`
 
-      const isFaceUp = useMemo(() => {
+      const isFaceUp: boolean = useMemo(() => {
         const card = cell.card
         if (!card) {
           return false
@@ -159,7 +159,7 @@ const GridCell = memo<{
         const isRevealedToMeExplicitly = localPlayerId !== null && Array.isArray(card.revealedTo) && card.revealedTo.includes(localPlayerId)
         const isRevealedByRequest = localPlayerId !== null && card.statuses?.some(s => s.type === 'Revealed' && s.addedByPlayerId === localPlayerId)
 
-        return !card.isFaceDown || isRevealedToAll || isRevealedToMeExplicitly || isRevealedByRequest
+        return !card.isFaceDown || isRevealedToAll || isRevealedToMeExplicitly || isRevealedByRequest || false
       }, [cell.card, localPlayerId])
 
       return (

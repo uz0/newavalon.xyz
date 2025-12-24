@@ -47,12 +47,16 @@ const syncLastPlayed = (board: Board, player: Player) => {
     for (let r = 0; r < board.length; r++) {
       for (let c = 0; c < board[r].length; c++) {
         if (board[r][c].card?.id === lastId) {
-          if (!board[r][c].card!.statuses) {
-board[r][c].card!.statuses = []
+          const card = board[r][c].card
+          if (!card) {
+            continue
           }
-                    board[r][c].card!.statuses!.push({ type: 'LastPlayed', addedByPlayerId: player.id })
-                    found = true
-                    break
+          if (!card.statuses) {
+            card.statuses = []
+          }
+          card.statuses.push({ type: 'LastPlayed', addedByPlayerId: player.id })
+          found = true
+          break
         }
       }
       if (found) {
@@ -1846,11 +1850,11 @@ export const useGameState = () => {
         return currentState
       }
       const newState: GameState = JSON.parse(JSON.stringify(currentState))
-      const tokenDefKey = Object.keys(rawJsonData.tokenDatabase).find(key => rawJsonData.tokenDatabase[key].name === tokenName)
+      const tokenDefKey = Object.keys(rawJsonData.tokenDatabase).find(key => rawJsonData.tokenDatabase[key as keyof typeof rawJsonData.tokenDatabase].name === tokenName)
       if (!tokenDefKey) {
         return currentState
       }
-      const tokenDef = rawJsonData.tokenDatabase[tokenDefKey]
+      const tokenDef = rawJsonData.tokenDatabase[tokenDefKey as keyof typeof rawJsonData.tokenDatabase]
       const owner = newState.players.find(p => p.id === ownerId)
       if (tokenDef && newState.board[coords.row][coords.col].card === null) {
         const tokenCard: Card = {
