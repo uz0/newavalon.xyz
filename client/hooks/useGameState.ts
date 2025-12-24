@@ -345,10 +345,13 @@ export const useGameState = () => {
       players: [createNewPlayer(1)],
     }
     updateState(initialState)
-    if (ws.current?.readyState === WebSocket.OPEN) {
-      ws.current.send(JSON.stringify({ type: 'SUBSCRIBE', gameId: newGameId }))
-      ws.current.send(JSON.stringify({ type: 'UPDATE_DECK_DATA', deckData: rawJsonData }))
-    }
+    // Wait for server to process UPDATE_STATE and assign playerId before sending other messages
+    setTimeout(() => {
+      if (ws.current?.readyState === WebSocket.OPEN) {
+        ws.current.send(JSON.stringify({ type: 'SUBSCRIBE', gameId: newGameId }))
+        ws.current.send(JSON.stringify({ type: 'UPDATE_DECK_DATA', deckData: rawJsonData }))
+      }
+    }, 100)
   }, [updateState, createInitialState, createNewPlayer])
 
   const requestGamesList = useCallback(() => {
