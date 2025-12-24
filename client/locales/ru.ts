@@ -151,6 +151,8 @@ export const ru: TranslationResource = {
     max5Rounds: 'Максимум 5 раундов',
     noTarget: 'Нет цели',
     confirmClearDeck: 'Подтвердите очистку колоды',
+    selectCardFromDeck: 'Выберите карту из колоды',
+    selectCardFromDiscard: 'Выберите карту из сброса',
     languageDisabled: 'Язык отключен',
     listModeTitle: 'Режим списка',
     listModeDescription: 'Оптимизированный макет для ПК.',
