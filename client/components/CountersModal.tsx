@@ -1,9 +1,10 @@
 
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import type { Card as CardType } from '@/types'
-import { AVAILABLE_COUNTERS, STATUS_ICONS, STATUS_DESCRIPTIONS } from '@/constants'
+import { getAvailableCounters, STATUS_ICONS, STATUS_DESCRIPTIONS } from '@/constants'
 import { Tooltip, CardTooltipContent } from './Tooltip'
 import { useLanguage } from '@/contexts/LanguageContext'
+import { getCardDatabaseMap } from '@/content'
 
 const COUNTER_BG_URL = 'https://res.cloudinary.com/dxxh6meej/image/upload/v1763653192/background_counter_socvss.png'
 
@@ -21,6 +22,9 @@ export const CountersModal: React.FC<CountersModalProps> = ({ isOpen, onClose, c
   const { getCounterTranslation } = useLanguage()
   const [tooltipCard, setTooltipCard] = useState<CardType | null>(null)
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 })
+
+  // Get available counters dynamically - will update when data is loaded from server
+  const availableCounters = useMemo(() => getAvailableCounters(), [getCardDatabaseMap()])
 
   if (!isOpen || !anchorEl) {
     return null
@@ -116,7 +120,7 @@ export const CountersModal: React.FC<CountersModalProps> = ({ isOpen, onClose, c
           </div>
           <div className="bg-gray-900 rounded p-4">
             <div className="grid grid-cols-4 gap-1">
-              {AVAILABLE_COUNTERS.map((counter) => {
+              {availableCounters.map((counter) => {
                 const iconUrl = getIcon(counter.type)
                 const isPower = counter.type.startsWith('Power')
 

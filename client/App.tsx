@@ -36,7 +36,7 @@ import type {
 } from './types'
 import { GameMode, DeckType } from './types'
 import { STATUS_ICONS, STATUS_DESCRIPTIONS } from './constants'
-import { countersDatabase } from './content'
+import { countersDatabase, fetchContentDatabase } from './content'
 import { validateTarget, calculateValidTargets, checkActionHasTargets } from './utils/targeting'
 import { useLanguage } from './contexts/LanguageContext'
 
@@ -500,6 +500,13 @@ const App = memo(function App() {
     handleResize()
     return () => window.removeEventListener('resize', handleResize)
   }, [isListMode])
+
+  // Load content database from server on mount
+  useEffect(() => {
+    fetchContentDatabase().catch(err => {
+      console.error('Failed to load content database:', err)
+    })
+  }, [])
 
   useEffect(() => {
     const handleGlobalClickCapture = (e: MouseEvent) => {

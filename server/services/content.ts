@@ -34,9 +34,7 @@ export async function initializeContent() {
         ]
       : [
           // Development: from server/services/
-          path.join(__dirname, '../../client/content/contentDatabase.json'),
           path.join(__dirname, '../content/contentDatabase.json'),
-          path.join(process.cwd(), 'client/content/contentDatabase.json'),
           path.join(process.cwd(), 'server/content/contentDatabase.json'),
         ];
 

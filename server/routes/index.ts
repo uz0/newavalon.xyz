@@ -28,16 +28,5 @@ export function setupRoutes(app: any) {
   // Content routes
   app.use('/api/content', contentRoutes);
 
-  // Serve frontend for all other routes (SPA routing)
-  app.get(/.*/, (req, res) => {
-    if (isProduction) {
-      // From dist-server/server/routes/ -> project/dist
-      res.sendFile(path.join(__dirname, '../../../dist/index.html'));
-    } else {
-      // Development: from server/routes/ -> client/index.html
-      res.sendFile(path.join(__dirname, '../../client/index.html'));
-    }
-  });
-
   console.log('API routes configured');
 }

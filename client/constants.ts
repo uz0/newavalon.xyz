@@ -5,7 +5,7 @@
 
 import type { Card, PlayerColor } from './types'
 import { DeckType, DeckType as DeckTypeEnum } from './types'
-import { countersDatabase } from './content'
+import { countersDatabase, getCountersDatabase } from './content'
 
 /**
  * The maximum number of players allowed in a game.
@@ -79,26 +79,53 @@ export const TURN_PHASES = [
 
 /**
  * Image URLs for status icons.
+ * Returns icons from the counters database.
  */
-export const STATUS_ICONS: Record<string, string> = Object.fromEntries(
-  Object.entries(countersDatabase).map(([key, def]) => [key, def.imageUrl]),
-)
+export const getStatusIcons = (): Record<string, string> => {
+  return Object.fromEntries(
+    Object.entries(countersDatabase).map(([key, def]) => [key, def.imageUrl]),
+  )
+}
+
+/**
+ * Backward compatible export - uses the function
+ */
+export const STATUS_ICONS: Record<string, string> = {} as any
+// Initialize after content loads
+Object.assign(STATUS_ICONS, getStatusIcons())
 
 /**
  * Descriptions for various status effects and counters.
+ * Returns descriptions from the counters database.
  */
-export const STATUS_DESCRIPTIONS: Record<string, string> = Object.fromEntries(
-  Object.entries(countersDatabase).map(([key, def]) => [key, def.description]),
-)
+export const getStatusDescriptions = (): Record<string, string> => {
+  return Object.fromEntries(
+    Object.entries(countersDatabase).map(([key, def]) => [key, def.description]),
+  )
+}
+
+/**
+ * Backward compatible export - uses the function
+ */
+export const STATUS_DESCRIPTIONS: Record<string, string> = {} as any
+// Initialize after content loads
+Object.assign(STATUS_DESCRIPTIONS, getStatusDescriptions())
 
 /**
  * Available counters for the Counters Modal, sorted by sortOrder.
  * Filters counters to only show those allowed in the COUNTER_PANEL.
  */
-export const AVAILABLE_COUNTERS = Object.entries(countersDatabase)
-  .filter(([, def]) => !def.allowedPanels || def.allowedPanels.includes('COUNTER_PANEL'))
-  .sort(([, a], [, b]) => a.sortOrder - b.sortOrder)
-  .map(([key, def]) => ({ type: key, label: def.name }))
+export const getAvailableCounters = () => {
+  return Object.entries(countersDatabase)
+    .filter(([, def]) => !def.allowedPanels || def.allowedPanels.includes('COUNTER_PANEL'))
+    .sort(([, a], [, b]) => a.sortOrder - b.sortOrder)
+    .map(([key, def]) => ({ type: key, label: def.name }))
+}
+
+/**
+ * Backward compatible export - uses the function
+ */
+export const AVAILABLE_COUNTERS = getAvailableCounters()
 
 /**
  * An array of predefined counter items that can be placed on cards.

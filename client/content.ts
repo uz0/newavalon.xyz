@@ -1,11 +1,10 @@
 /**
- * @file Content data re-export that imports from the single source of truth in server directory.
- * This file provides the same interface as the old content/index.ts but imports from server.
+ * @file Content data loader that fetches from the server API.
+ * This provides the same interface as before but fetches data from the server.
  */
 
 import { DeckType } from './types'
 import type { Card, CounterDefinition } from './types'
-import rawJsonDataImport from './content/contentDatabase.json'
 
 // --- Type assertion for the imported JSON data ---
 interface RawDecksJson {
@@ -20,30 +19,19 @@ interface RawDecksJson {
   }[];
 }
 
-const { cardDatabase: rawCardDb, tokenDatabase: rawTokenDb, countersDatabase: rawCountersDb, deckFiles: df } = rawJsonDataImport as RawDecksJson
-
-// Export raw data for server synchronization
-export const rawJsonData = rawJsonDataImport
-
 // Base definition of a card, without instance-specific properties like id or deck.
 export type CardDefinition = Omit<Card, 'id' | 'deck'>;
 
-// --- Exported Data Structures ---
-
-// A Map of all base card definitions, keyed by cardId.
-export const cardDatabase = new Map<string, CardDefinition>(Object.entries(rawCardDb))
-
-// A Map of all token definitions, keyed by tokenId.
-export const tokenDatabase = new Map<string, CardDefinition>(Object.entries(rawTokenDb))
-
-// A Map of all counter definitions.
-export const countersDatabase = rawCountersDb
-
-// An array of deck file definitions, used for deck selection and building.
-export const deckFiles = df
+// --- Internal state management (prefixed with _) ---
+let _rawJsonData: RawDecksJson | null = null
+let _cardDatabase: Map<string, CardDefinition> = new Map()
+let _tokenDatabase: Map<string, CardDefinition> = new Map()
+let _countersDatabase: Record<string, Omit<CounterDefinition, 'id'>> = {}
+let _deckFiles: RawDecksJson['deckFiles'] = []
+let _decksData: Record<string, Card[]> = {}
 
 // A Set of card IDs that are considered "Command" cards for special handling.
-export const commandCardIds = new Set([
+const _commandCardIds = new Set([
   'overwatch',
   'repositioning',
   'tacticalManeuver',
@@ -58,29 +46,84 @@ export const commandCardIds = new Set([
   'enhancedInterrogation',
 ])
 
-type DecksData = Record<string, Card[]>;
+/**
+ * Fetch content database from server
+ */
+export async function fetchContentDatabase(): Promise<void> {
+  try {
+    const response = await fetch('/api/content/database')
+    if (!response.ok) {
+      throw new Error(`Failed to fetch content database: ${response.statusText}`)
+    }
+    const data = await response.json()
+
+    // Transform API response to match expected format
+    const cards: [string, CardDefinition][] = data.cards.map(([id, card]: [string, CardDefinition]) => [id, card])
+    const tokens: [string, CardDefinition][] = data.tokens.map(([id, token]: [string, CardDefinition]) => [id, token])
+
+    _rawJsonData = {
+      cardDatabase: Object.fromEntries(cards),
+      tokenDatabase: Object.fromEntries(tokens),
+      countersDatabase: Object.fromEntries(data.counters),
+      deckFiles: data.deckFiles
+    }
+
+    // Initialize databases
+    _cardDatabase = new Map(cards)
+    _tokenDatabase = new Map(tokens)
+    _countersDatabase = _rawJsonData.countersDatabase
+    _deckFiles = _rawJsonData.deckFiles
+
+    // Update exported values (for backward compatibility)
+    rawJsonData = _rawJsonData
+    cardDatabase = _cardDatabase
+    tokenDatabase = _tokenDatabase
+    countersDatabase = _countersDatabase
+    deckFiles = _deckFiles
+
+    // Update constants that depend on countersDatabase
+    const constantsModule = await import('./constants')
+    if (constantsModule.STATUS_ICONS) {
+      Object.assign(constantsModule.STATUS_ICONS, Object.fromEntries(
+        Object.entries(_countersDatabase).map(([key, def]) => [key, def.imageUrl]),
+      ))
+    }
+    if (constantsModule.STATUS_DESCRIPTIONS) {
+      Object.assign(constantsModule.STATUS_DESCRIPTIONS, Object.fromEntries(
+        Object.entries(_countersDatabase).map(([key, def]) => [key, def.description]),
+      ))
+    }
+
+    // Build decks data
+    _decksData = buildDecksData()
+    decksData = _decksData
+  } catch (error) {
+    console.error('Failed to load content database:', error)
+    throw error
+  }
+}
 
 /**
  * Processes the raw JSON data into a complete, playable deck data structure.
  * It combines card definitions with deck lists, expands card quantities,
  * and generates unique, dynamic IDs for each card instance.
- * @returns {DecksData} The fully constructed deck data object.
+ * @returns {Record<string, Card[]>} The fully constructed deck data object.
  */
-function buildDecksData(): DecksData {
-  const builtDecks: DecksData = {}
+function buildDecksData(): Record<string, Card[]> {
+  const builtDecks: Record<string, Card[]> = {}
 
-  for (const deckFile of deckFiles) {
+  for (const deckFile of _deckFiles) {
     const deckCardList: Card[] = []
 
     // Iterate through the card list in the deck definition file
     for (const deckEntry of deckFile.cards) {
-      const cardDef = cardDatabase.get(deckEntry.cardId)
+      const cardDef = _cardDatabase.get(deckEntry.cardId)
       if (!cardDef) {
         console.warn(`Card definition not found for ID: ${deckEntry.cardId} in deck: ${deckFile.name}`)
         continue
       }
 
-      const isCommandCard = commandCardIds.has(deckEntry.cardId)
+      const isCommandCard = _commandCardIds.has(deckEntry.cardId)
 
       // Add the specified quantity of each card to the deck
       for (let i = 0; i < deckEntry.quantity; i++) {
@@ -113,7 +156,7 @@ function buildDecksData(): DecksData {
 
   // Add the special "Tokens" deck, which is built from the token database.
   // Tokens use their defined types, with an empty array fallback (not hardcoded).
-  builtDecks[DeckType.Tokens] = Array.from(tokenDatabase.entries()).map(([tokenId, tokenDef]) => {
+  builtDecks[DeckType.Tokens] = Array.from(_tokenDatabase.entries()).map(([tokenId, tokenDef]) => {
     const types = tokenDef.types ? [...tokenDef.types] : []
 
     return {
@@ -135,17 +178,50 @@ function buildDecksData(): DecksData {
   return builtDecks
 }
 
-// The primary data structure used by the app to create decks for players.
-export const decksData: DecksData = buildDecksData()
+// --- Backward compatibility exports ---
+// These are mutable exports that will be updated after fetchContentDatabase
 
-// --- Utility Functions ---
+/**
+ * Raw JSON data (for backward compatibility) - populated after fetchContentDatabase
+ */
+export let rawJsonData: RawDecksJson | null = null
+
+/**
+ * Card database (for backward compatibility) - populated after fetchContentDatabase
+ */
+export let cardDatabase: Map<string, CardDefinition> = new Map()
+
+/**
+ * Token database (for backward compatibility) - populated after fetchContentDatabase
+ */
+export let tokenDatabase: Map<string, CardDefinition> = new Map()
+
+/**
+ * Counters database (for backward compatibility) - populated after fetchContentDatabase
+ */
+export let countersDatabase: Record<string, Omit<CounterDefinition, 'id'>> = {}
+
+/**
+ * Deck files (for backward compatibility) - populated after fetchContentDatabase
+ */
+export let deckFiles: RawDecksJson['deckFiles'] = []
+
+/**
+ * Decks data (for backward compatibility) - populated after fetchContentDatabase
+ */
+export let decksData: Record<string, Card[]> = {}
+
+/**
+ * Command card IDs set
+ */
+export const commandCardIds = _commandCardIds
 
 /**
  * A utility function to get all selectable deck definitions for the UI.
  * @returns An array of deck file definitions that are marked as selectable.
  */
 export const getSelectableDecks = () => {
-  return deckFiles.filter(df => df.isSelectable)
+  return _deckFiles.filter(df => df.isSelectable)
 }
 
 /**
@@ -154,7 +230,7 @@ export const getSelectableDecks = () => {
  * @returns {CardDefinition | undefined} The card definition or undefined if not found.
  */
 export function getCardDefinition(cardId: string): CardDefinition | undefined {
-  return cardDatabase.get(cardId)
+  return _cardDatabase.get(cardId)
 }
 
 /**
@@ -163,7 +239,7 @@ export function getCardDefinition(cardId: string): CardDefinition | undefined {
  * @returns {CardDefinition | undefined}
  */
 export function getCardDefinitionByName(name: string): CardDefinition | undefined {
-  return Array.from(cardDatabase.values()).find(c => c.name === name)
+  return Array.from(_cardDatabase.values()).find(c => c.name === name)
 }
 
 /**
@@ -171,5 +247,22 @@ export function getCardDefinitionByName(name: string): CardDefinition | undefine
  * @returns An array of objects, each containing the card's ID and its definition.
  */
 export function getAllCards(): { id: string, card: CardDefinition }[] {
-  return Array.from(cardDatabase.entries()).map(([id, card]) => ({ id, card }))
+  return Array.from(_cardDatabase.entries()).map(([id, card]) => ({ id, card }))
+}
+
+// Note: Exports are mutable and will be updated after fetchContentDatabase() is called
+
+/**
+ * Get the internal card database Map (for reactive updates in components)
+ * This allows components to track when data changes
+ */
+export function getCardDatabaseMap(): Map<string, CardDefinition> {
+  return _cardDatabase
+}
+
+/**
+ * Get the internal token database Map
+ */
+export function getTokenDatabaseMap(): Map<string, CardDefinition> {
+  return _tokenDatabase
 }
