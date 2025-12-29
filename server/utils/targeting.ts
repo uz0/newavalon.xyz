@@ -1,4 +1,4 @@
-import type { GameState, Card, CommandContext, AbilityAction } from '@/types'
+import type { GameState, Card, CommandContext, AbilityAction } from '../types/types.js'
 
 // Constants for target validation
 const TARGET_OPPONENTS = -1
@@ -186,7 +186,7 @@ export const calculateValidTargets = (
   const { mode, payload, sourceCoords, contextCheck } = action
 
   // 1. Generic TARGET selection
-  if ((mode === 'SELECT_TARGET' || mode === 'CENSOR_SWAP' || mode === 'ZEALOUS_WEAKEN' || mode === 'CENTURION_BUFF' || mode === 'SELECT_UNIT_FOR_MOVE') && payload.filter) {
+  if ((mode === 'SELECT_TARGET' || mode === 'CENSOR_SWAP' || mode === 'ZEALOUS_WEAKEN' || mode === 'CENTURION_BUFF' || mode === 'SELECT_UNIT_FOR_MOVE') && payload.filter && typeof payload.filter === 'function') {
 
     // Strict Hand-Only actions check
     if (payload.actionType === 'SELECT_HAND_FOR_DISCARD_THEN_SPAWN' ||
@@ -246,8 +246,6 @@ export const calculateValidTargets = (
   }
   // 3. Riot Push (Adjacent opponent who can be pushed into empty space)
   else if (mode === 'RIOT_PUSH' && sourceCoords) {
-    targets.push(sourceCoords) // Allow targeting self to skip
-
     const neighbors = [
       { r: sourceCoords.row - 1, c: sourceCoords.col },
       { r: sourceCoords.row + 1, c: sourceCoords.col },
@@ -448,6 +446,18 @@ export const calculateValidTargets = (
       }
     }
   }
+  // 11.5. Zius Line Select (same as Integrator, but uses different coords)
+  else if (mode === 'ZIUS_LINE_SELECT' && sourceCoords) {
+    for (let r = 0; r < gridSize; r++) {
+      for (let c = 0; c < gridSize; c++) {
+        const isRow = r === sourceCoords.row
+        const isCol = c === sourceCoords.col
+        if (isRow || isCol) {
+          targets.push({ row: r, col: c })
+        }
+      }
+    }
+  }
   // 12. Select Diagonal
   else if (mode === 'SELECT_DIAGONAL') {
     if (!payload.firstCoords) {
@@ -496,6 +506,25 @@ export const checkActionHasTargets = (action: AbilityAction, currentGameState: G
     return true
   }
 
+  // Special Case: Hand-only actions that require discarding (Faber, Lucius)
+  // These actions target cards in hand, so we need to check if the player has cards to discard
+  if (action.mode === 'SELECT_TARGET' && action.payload?.actionType) {
+    const actionType = action.payload.actionType
+    if (actionType === 'SELECT_HAND_FOR_DISCARD_THEN_SPAWN' ||
+        actionType === 'LUCIUS_SETUP' ||
+        actionType === 'SELECT_HAND_FOR_DEPLOY') {
+      // Check if the source card's owner has cards in hand
+      const ownerId = action.sourceCard?.ownerId || playerId
+      if (ownerId !== null) {
+        const player = currentGameState.players.find(p => p.id === ownerId)
+        if (player && player.hand.length > 0) {
+          return true // Player has cards to discard
+        }
+      }
+      return false // No cards in hand
+    }
+  }
+
   // Note: CREATE_STACK is now checked via calculateValidTargets as well
   if (action.type === 'CREATE_STACK') {
     const boardTargets = calculateValidTargets(action, currentGameState, playerId, commandContext)
@@ -540,14 +569,24 @@ export const checkActionHasTargets = (action: AbilityAction, currentGameState: G
     return true
   }
 
-  // 2. Check Hand Targets (For 'DESTROY' actions targeting Revealed cards)
+  // 2. Check Hand Targets (For 'DESTROY' actions targeting Revealed cards, or allowHandTargets)
   if (action.mode === 'SELECT_TARGET' && action.payload?.filter) {
-    // Iterate all players hands
-    for (const p of currentGameState.players) {
-      if (p.hand.some((card) => action.payload.filter!(card))) {
-        return true
+    // Check if hand targets are allowed
+    if (action.payload.allowHandTargets || action.payload.actionType === 'DESTROY') {
+      // Iterate all players hands
+      for (const p of currentGameState.players) {
+        if (p.hand.some((card) => action.payload.filter!(card))) {
+          return true
+        }
       }
     }
+  }
+
+  // 3. Check modes with filters that only work on board (CENSOR_SWAP, etc.)
+  if ((action.mode === 'CENSOR_SWAP' || action.mode === 'ZEALOUS_WEAKEN' || action.mode === 'CENTURION_BUFF' || action.mode === 'SELECT_UNIT_FOR_MOVE') && action.payload?.filter) {
+    // Board targets are already checked in step 1
+    // Return false since no valid board targets were found
+    return false
   }
 
   return false

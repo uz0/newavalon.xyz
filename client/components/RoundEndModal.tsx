@@ -4,6 +4,7 @@
 import React from 'react'
 import type { GameState, Player } from '@/types'
 import { PLAYER_COLORS } from '@/constants'
+import { useLanguage } from '@/contexts/LanguageContext'
 
 // Constants
 const MAX_ROUNDS = 5
@@ -16,6 +17,8 @@ interface RoundEndModalProps {
 }
 
 export const RoundEndModal: React.FC<RoundEndModalProps> = ({ gameState, onConfirm, onExit }) => {
+  const { t } = useLanguage()
+
   if (!gameState.isRoundEndModalOpen) {
     return null
   }
@@ -51,7 +54,7 @@ export const RoundEndModal: React.FC<RoundEndModalProps> = ({ gameState, onConfi
         {/* Header */}
         <div className="mb-4 text-center">
           <h2 className="text-sm font-bold text-gray-400 uppercase tracking-widest leading-none">
-            {isGameOver ? 'Game Over' : `Round ${gameState.currentRound} Complete`}
+            {isGameOver ? t('gameOver') : `${t('round')} ${gameState.currentRound} ${t('roundComplete')}`}
           </h2>
         </div>
 
@@ -81,7 +84,7 @@ export const RoundEndModal: React.FC<RoundEndModalProps> = ({ gameState, onConfi
                       src={ROUND_WIN_MEDAL_URL}
                       alt="Winner"
                       className="w-6 h-6 object-contain drop-shadow-md"
-                      title="Round Winner"
+                      title={t('roundWinner')}
                     />
                   ))}
                 </div>
@@ -94,7 +97,7 @@ export const RoundEndModal: React.FC<RoundEndModalProps> = ({ gameState, onConfi
 
         {/* Meta Info */}
         <div className="text-xs text-gray-400 flex justify-between px-1">
-          <span>Ended on Turn {gameState.turnNumber}</span>
+          <span>{t('endedOnTurn')} {gameState.turnNumber}</span>
           <span>Alpha v0.1.3</span>
         </div>
 
@@ -105,22 +108,22 @@ export const RoundEndModal: React.FC<RoundEndModalProps> = ({ gameState, onConfi
           {!isGameOver ? (
             <>
               <div className="flex justify-between">
-                <span className="text-gray-400">Next:</span>
-                <span className="font-bold text-white">Round {nextRound}</span>
+                <span className="text-gray-400">{t('nextRound')}</span>
+                <span className="font-bold text-white">{t('round')} {nextRound}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-400">Victory Condition:</span>
-                <span className="font-bold text-yellow-400">{nextTarget} Points</span>
+                <span className="text-gray-400">{t('victoryCondition')}</span>
+                <span className="font-bold text-yellow-400">{nextTarget} {t('score')}</span>
               </div>
               <div className="text-xs text-gray-500 italic mt-2 text-center">
-                * Win 2 rounds to win the match. <br/>
-                {nextRound === MAX_ROUNDS ? 'Final Round! Max 10 Turns.' : `Max ${MAX_ROUNDS} Rounds.`}
+                {t('win2RoundsMatch')}<br/>
+                {nextRound === MAX_ROUNDS ? t('finalRoundMaxTurns') : t('max5RoundsInfo')}
               </div>
             </>
           ) : (
             <div className="text-center py-2">
-              <div className="text-yellow-400 font-bold text-lg mb-1">Match Complete</div>
-              <p className="text-gray-400 text-xs">Thank you for playing New Avalon: Skirmish.</p>
+              <div className="text-yellow-400 font-bold text-lg mb-1">{t('matchComplete')}</div>
+              <p className="text-gray-400 text-xs">{t('thankYouPlaying')}</p>
             </div>
           )}
         </div>
@@ -133,13 +136,13 @@ export const RoundEndModal: React.FC<RoundEndModalProps> = ({ gameState, onConfi
                 onClick={onExit}
                 className="flex-1 bg-red-900 hover:bg-red-800 text-white font-bold py-2 px-4 rounded border border-red-700 text-sm transition-colors"
               >
-                Return to Menu
+                {t('returnToMenu')}
               </button>
               <button
                 onClick={onConfirm}
                 className="flex-1 bg-green-800 hover:bg-green-700 text-white font-bold py-2 px-4 rounded border border-green-600 text-sm transition-colors"
               >
-                Continue Game
+                {t('continueGame')}
               </button>
             </>
           ) : (
@@ -147,7 +150,7 @@ export const RoundEndModal: React.FC<RoundEndModalProps> = ({ gameState, onConfi
               onClick={onConfirm}
               className="bg-green-800 hover:bg-green-700 text-white font-bold py-2 px-6 rounded border border-green-600 text-sm transition-colors w-full"
             >
-              Start Round {nextRound}
+              {t('startRound')} {nextRound}
             </button>
           )}
         </div>

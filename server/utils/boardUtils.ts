@@ -1,6 +1,19 @@
-import { Board, GameState } from '../types/types.js'
+/**
+ * @file Board utilities for game state management
+ * Shared between client and server
+ *
+ * Card IDs for Hero passives:
+ * - Mr. Pearl (mrPearlDoF): +1 Power to other own units in lines
+ * - Reverend of The Choir (reverendOfTheChoir): Support to all own units in lines
+ */
+
+import type { Board, GameState } from '../types/types.js'
 
 const GRID_MAX_SIZE = 7
+
+// Hero card baseIds for passive abilities (direct ID matching)
+const HERO_MR_PEARL_ID = 'mrPearlDoF'
+const HERO_REVEREND_ID = 'reverendOfTheChoir'
 
 /**
  * Creates an empty game board of the maximum possible size.
@@ -11,7 +24,7 @@ export const createInitialBoard = (): Board =>
 
 /**
  * Recalculates "Support" and "Threat" statuses for all cards on the board.
- * Also calculates passive buffs like Mr. Pearl's bonus power.
+ * Also calculates passive buffs like Mr. Pearl's bonus power and Reverend's Support.
  * This function is computationally intensive and should be called only when the board changes.
  * @param {GameState} gameState The entire current game state.
  * @returns {Board} A new board object with updated statuses.
@@ -23,7 +36,7 @@ export const recalculateBoardStatuses = (gameState: GameState): Board => {
   const offset = Math.floor((GRID_SIZE - activeGridSize) / 2)
 
   const playerTeamMap = new Map<number, number | undefined>()
-  players.forEach(p => playerTeamMap.set(p.id, p.teamId))
+  players.forEach((p: { id: number; teamId?: number }) => playerTeamMap.set(p.id, p.teamId))
 
   // 1. Reset dynamic properties
   for (let r = 0; r < GRID_SIZE; r++) {
@@ -102,7 +115,8 @@ export const recalculateBoardStatuses = (gameState: GameState): Board => {
 
       // Apply "Threat" Status Condition A: Pinned by two cards of the same enemy.
       for (const enemyPlayerId in enemyNeighborsByPlayer) {
-        if (enemyNeighborsByPlayer[enemyPlayerId].length >= 2) {
+        const neighbors = enemyNeighborsByPlayer[enemyPlayerId]
+        if (neighbors && neighbors.length >= 2) {
           threateningPlayerId = parseInt(enemyPlayerId, 10)
           break
         }
@@ -120,7 +134,10 @@ export const recalculateBoardStatuses = (gameState: GameState): Board => {
           const hasEnemyNeighbor = Object.keys(enemyNeighborsByPlayer).length > 0
 
           if (isCardOnEdge && hasEnemyNeighbor) {
-            threateningPlayerId = parseInt(Object.keys(enemyNeighborsByPlayer)[0], 10)
+            const firstEnemyKey = Object.keys(enemyNeighborsByPlayer)[0]
+            if (firstEnemyKey) {
+              threateningPlayerId = parseInt(firstEnemyKey, 10)
+            }
           }
         }
       }
@@ -145,13 +162,15 @@ export const recalculateBoardStatuses = (gameState: GameState): Board => {
       // Stunned Heroes do not emit passive auras
       const isStunned = card?.statuses?.some((s: {type: string}) => s.type === 'Stun')
 
-      if (!card?.name || card.isFaceDown || card.ownerId === undefined || isStunned) {
+      if (!card?.baseId || card.isFaceDown || card.ownerId === undefined || isStunned) {
         continue
       }
 
+      const cardBaseId = card.baseId
+      const ownerId = card.ownerId
+
       // 3.1 Reverend of The Choir: Support to all own units in lines
-      if (card.name.includes('Reverend')) {
-        const ownerId = card.ownerId
+      if (cardBaseId === HERO_REVEREND_ID) {
         // Row
         for (let i = 0; i < GRID_SIZE; i++) {
           const target = newBoard[r][i].card
@@ -179,8 +198,7 @@ export const recalculateBoardStatuses = (gameState: GameState): Board => {
       }
 
       // 3.2 Mr. Pearl: +1 Power to other own units in lines
-      if (card.name.includes('Mr. Pearl')) {
-        const ownerId = card.ownerId
+      if (cardBaseId === HERO_MR_PEARL_ID) {
         // Row
         for (let i = 0; i < GRID_SIZE; i++) {
           const target = newBoard[r][i].card

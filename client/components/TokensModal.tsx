@@ -1,9 +1,10 @@
 
-import React from 'react'
+import React, { useRef, useState, useEffect } from 'react'
 import { DeckType } from '@/types'
 import type { DragItem, Card as CardType } from '@/types'
 import { decksData } from '@/content'
 import { Card } from './Card'
+import { useLanguage } from '@/contexts/LanguageContext'
 
 interface TokensModalProps {
   isOpen: boolean;
@@ -13,10 +14,23 @@ interface TokensModalProps {
   canInteract: boolean;
   anchorEl: { top: number; left: number } | null;
   imageRefreshVersion?: number;
-  draggedItem: DragItem | null;
 }
 
-export const TokensModal: React.FC<TokensModalProps> = ({ isOpen, onClose, setDraggedItem, openContextMenu, canInteract, anchorEl, imageRefreshVersion, draggedItem }) => {
+export const TokensModal: React.FC<TokensModalProps> = ({ isOpen, onClose, setDraggedItem, openContextMenu, canInteract, anchorEl, imageRefreshVersion }) => {
+  const { t } = useLanguage()
+  const [draggedTokenId, setDraggedTokenId] = useState<string | null>(null)
+  const [droppedOutside, setDroppedOutside] = useState(false)
+  const modalRef = useRef<HTMLDivElement>(null)
+  const draggedTokenRef = useRef<CardType | null>(null)
+
+  useEffect(() => {
+    if (isOpen) {
+      setDraggedTokenId(null)
+      setDroppedOutside(false)
+      draggedTokenRef.current = null
+    }
+  }, [isOpen])
+
   if (!isOpen || !anchorEl) {
     return null
   }
@@ -32,51 +46,83 @@ export const TokensModal: React.FC<TokensModalProps> = ({ isOpen, onClose, setDr
     zIndex: 60,
   }
 
-  const handleDragLeave = (e: React.DragEvent) => {
-    if (draggedItem?.source === 'token_panel') {
-      const rect = e.currentTarget.getBoundingClientRect()
-      const x = e.clientX
-      const y = e.clientY
+  const handleDragStart = (token: CardType) => {
+    if (!canInteract) {return}
 
-      if (x < rect.left || x >= rect.right || y < rect.top || y >= rect.bottom) {
-        onClose()
-      }
+    setDraggedTokenId(token.id)
+    draggedTokenRef.current = token
+    setDroppedOutside(false)
+  }
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    if (!draggedTokenRef.current || !modalRef.current) {return}
+
+    const rect = modalRef.current.getBoundingClientRect()
+    const x = e.clientX
+    const y = e.clientY
+
+    // If cursor is outside modal bounds, set up draggedItem and close modal
+    if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+      setDraggedItem({
+        card: draggedTokenRef.current,
+        source: 'token_panel',
+      })
+
+      setDroppedOutside(true)
+
+      // Close modal immediately so drop can happen on underlying elements
+      onClose()
     }
+  }
+
+  const handleDragEnd = () => {
+    // Only cleanup if we didn't drop outside (outside case is handled by dragLeave)
+    if (!droppedOutside) {
+      setDraggedTokenId(null)
+    }
+    draggedTokenRef.current = null
   }
 
   return (
     <div
       style={modalStyle}
       className="pointer-events-auto"
+      ref={modalRef}
       onDragLeave={handleDragLeave}
     >
       <div className="bg-gray-800 rounded-lg p-4 shadow-xl w-96 max-w-[90vw] h-auto flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="flex justify-between items-center mb-2">
-          <h2 className="text-xl font-bold">Tokens</h2>
+          <h2 className="text-xl font-bold">{t('tokens')}</h2>
           <button onClick={onClose} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-1 px-3 rounded text-sm">
-                Close
+                {t('close')}
           </button>
         </div>
         <div className="flex-grow bg-gray-900 rounded p-2 overflow-y-auto">
           <div className="grid grid-cols-3 gap-2">
-            {tokenCards.map((token) => (
-              <div
-                key={token.id}
-                draggable={canInteract}
-                onDragStart={() => canInteract && setDraggedItem({
-                  card: token,
-                  source: 'token_panel',
-                })}
-                onDragEnd={() => setDraggedItem(null)}
-                onContextMenu={(e) => canInteract && openContextMenu(e, 'token_panel_item', { card: token })}
-                data-interactive={canInteract}
-                className={`w-24 h-24 ${canInteract ? 'cursor-grab' : 'cursor-not-allowed'}`}
-              >
-                <Card card={token} isFaceUp={true} playerColorMap={new Map()} imageRefreshVersion={imageRefreshVersion} />
-              </div>
-            ))}
+            {tokenCards.map((token) => {
+              const isBeingDragged = draggedTokenId === token.id
+              const opacity = isBeingDragged ? 0.5 : 1
+
+              return (
+                <div
+                  key={token.id}
+                  style={{ opacity }}
+                  draggable={canInteract}
+                  onDragStart={() => handleDragStart(token)}
+                  onDragEnd={handleDragEnd}
+                  onContextMenu={(e) => canInteract && openContextMenu(e, 'token_panel_item', { card: token })}
+                  data-interactive={canInteract}
+                  className={`w-24 h-24 transition-all rounded-lg ${canInteract ? 'cursor-grab active:cursor-grabbing hover:scale-105' : 'cursor-not-allowed'} ${isBeingDragged ? 'scale-95' : ''}`}
+                >
+                  <Card card={token} isFaceUp={true} playerColorMap={new Map()} imageRefreshVersion={imageRefreshVersion} />
+                </div>
+              )
+            })}
           </div>
         </div>
+        <p className="text-gray-400 text-xs mt-2 text-center">
+          {t('dragOutsideToPlaceToken')}
+        </p>
       </div>
     </div>
   )

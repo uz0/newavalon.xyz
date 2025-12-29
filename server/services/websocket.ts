@@ -59,6 +59,8 @@ import {
 } from '../handlers/playerSettings.js';
 import {
   handleToggleAutoAbilities,
+  handleToggleAutoDraw,
+  handleToggleActivePlayer,
   handleNextPhase,
   handlePrevPhase,
   handleSetPhase
@@ -198,6 +200,8 @@ function routeMessage(ws, data) {
     'FORCE_SYNC': handleForceSync,
     'SYNC_GAME': handleSyncGame,
     'TOGGLE_AUTO_ABILITIES': handleToggleAutoAbilities,
+    'TOGGLE_AUTO_DRAW': handleToggleAutoDraw,
+    'TOGGLE_ACTIVE_PLAYER': handleToggleActivePlayer,
     'NEXT_PHASE': handleNextPhase,
     'PREV_PHASE': handlePrevPhase,
     'SET_PHASE': handleSetPhase,

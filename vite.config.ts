@@ -24,7 +24,7 @@ export default defineConfig(({ command }: { command: string }) => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './client'),
-        '@content': path.resolve(__dirname, './server/content')
+        '@server': path.resolve(__dirname, './server'),
       }
     }
   }

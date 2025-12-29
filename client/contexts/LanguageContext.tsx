@@ -9,6 +9,7 @@ interface LanguageContextType {
   t: (key: keyof TranslationResource['ui']) => string;
   getCardTranslation: (cardId: string) => CardTranslation | undefined;
   getCounterTranslation: (type: string) => { name: string; description: string } | undefined;
+  getDeckTranslation: (deckId: string) => string | undefined;
   resources: TranslationResource;
   isRTL: boolean;
 }
@@ -51,6 +52,12 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
     return resources[language].counters[type] || resources['en'].counters[type]
   }
 
+  const getDeckTranslation = (deckId: string) => {
+    const deckNames = resources[language].deckNames
+    const enDeckNames = resources['en'].deckNames
+    return deckNames[deckId as keyof typeof enDeckNames] || enDeckNames[deckId as keyof typeof enDeckNames]
+  }
+
   const isRTL = false // Current languages (en, ru, sr) are all LTR
 
   return (
@@ -60,6 +67,7 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
       t,
       getCardTranslation,
       getCounterTranslation,
+      getDeckTranslation,
       resources: resources[language],
       isRTL,
     }}>

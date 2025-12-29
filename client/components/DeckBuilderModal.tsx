@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react'
 import { DeckType } from '@/types'
 import type { CustomDeckFile, Player, Card } from '@/types'
-import { getAllCards, getSelectableDecks, getCardDefinition, commandCardIds } from '@/content'
+import { getAllCards, getSelectableDecks, getCardDefinition, commandCardIds, getCardDatabaseMap } from '@/content'
 import { Card as CardComponent } from './Card'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { validateDeckData, MAX_DECK_SIZE } from '@/utils/deckValidation'
@@ -12,11 +12,36 @@ interface DeckBuilderModalProps {
   setViewingCard: React.Dispatch<React.SetStateAction<{ card: Card; player?: Player; } | null>>;
 }
 
-const allCards = getAllCards().filter(({ card }) => card.allowedPanels?.includes('DECK_BUILDER'))
-const selectableFactions = getSelectableDecks()
-
 export const DeckBuilderModal: React.FC<DeckBuilderModalProps> = ({ isOpen, onClose, setViewingCard }) => {
   const { getCardTranslation, t } = useLanguage()
+
+  // Get cards dynamically - they will be loaded from server
+  // Use cardDatabase size as dependency to trigger re-render when data is loaded
+  const [, setCardCount] = useState(0)
+
+  // Force re-render when card data is loaded
+  useEffect(() => {
+    const checkData = () => {
+      const db = getCardDatabaseMap()
+      if (db.size > 0) {
+        setCardCount(db.size)
+        return undefined
+      } else {
+        // If empty, check again after a delay (waiting for fetch)
+        const timer = setTimeout(checkData, 100)
+        return () => clearTimeout(timer)
+      }
+    }
+    const cleanup = checkData()
+    return cleanup
+  }, [])
+
+  const allCards = useMemo(() => {
+    return getAllCards().filter(({ card }) => card.allowedPanels?.includes('DECK_BUILDER'))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [getCardDatabaseMap().size])
+
+  const selectableFactions = getSelectableDecks()
   const [deckName, setDeckName] = useState('My Custom Deck')
   const [currentDeck, setCurrentDeck] = useState<Map<string, number>>(new Map())
   const [selectedFactionFilter, setSelectedFactionFilter] = useState<string>('All')
@@ -42,7 +67,7 @@ export const DeckBuilderModal: React.FC<DeckBuilderModalProps> = ({ isOpen, onCl
     const types = new Set<string>()
     allCards.forEach(({ card }) => card.types?.forEach(t => types.add(t)))
     return Array.from(types).sort()
-  }, [])
+  }, [allCards])
 
   const filteredCards = useMemo(() => {
     const cards = allCards
@@ -87,7 +112,7 @@ export const DeckBuilderModal: React.FC<DeckBuilderModalProps> = ({ isOpen, onCl
 
       return true
     })
-  }, [selectedFactionFilter, searchQuery, powerFilter, selectedTypes, getCardTranslation])
+  }, [allCards, selectedFactionFilter, searchQuery, powerFilter, selectedTypes, getCardTranslation])
 
   const totalCards = useMemo(() => {
     let total = 0

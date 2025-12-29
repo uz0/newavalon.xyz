@@ -1,5 +1,5 @@
-import React, { memo, useState, useEffect, useCallback, useMemo } from 'react'
-import type { Card as CardType, PlayerColor, Player, ContextMenuItem } from '@/types'
+import React, { memo, useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import type { Card as CardType, PlayerColor, Player, ContextMenuItem, DragItem } from '@/types'
 import { Card } from './Card'
 import { ContextMenu } from './ContextMenu'
 import { useLanguage } from '@/contexts/LanguageContext'
@@ -14,6 +14,7 @@ interface TopDeckViewProps {
     onMoveToDiscard: (cardIndex: number) => void;
     onPlayCard: (cardIndex: number) => void;
     onViewCard: (card: CardType) => void;
+    setDraggedItem?: (item: DragItem | null) => void;
     playerColorMap: Map<number, PlayerColor>;
     localPlayerId: number | null;
     imageRefreshVersion?: number;
@@ -31,6 +32,7 @@ const TopDeckView: React.FC<TopDeckViewProps> = memo(({
   onMoveToDiscard,
   onPlayCard,
   onViewCard,
+  setDraggedItem,
   playerColorMap,
   localPlayerId,
   imageRefreshVersion,
@@ -40,18 +42,41 @@ const TopDeckView: React.FC<TopDeckViewProps> = memo(({
   const { t } = useLanguage()
   const [viewCount, setViewCount] = useState(initialCount)
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, cardIndex: number } | null>(null)
+  const [draggedCardId, setDraggedCardId] = useState<string | null>(null)
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
+  const [localVisibleCards, setLocalVisibleCards] = useState<CardType[]>([])
+  const [droppedOutside, setDroppedOutside] = useState(false)
+  const modalRef = useRef<HTMLDivElement>(null)
+  const draggedCardRef = useRef<CardType | null>(null)
 
   useEffect(() => {
     if (isOpen) {
       setViewCount(initialCount)
+      setDraggedCardId(null)
+      setDraggedIndex(null)
+      setDragOverIndex(null)
+      setDroppedOutside(false)
+      draggedCardRef.current = null
     }
   }, [isOpen, initialCount])
 
-  const visibleCards = useMemo(() => {
-    return player.deck.slice(0, Math.min(viewCount, player.deck.length))
+  // Update local visible cards when player deck or view count changes
+  useEffect(() => {
+    const cards = player.deck.slice(0, Math.min(viewCount, player.deck.length))
+    setLocalVisibleCards(cards)
   }, [player.deck, viewCount])
+
+  // Determine which cards to display (with reordering applied if drag is active)
+  const displayCards = useMemo(() => {
+    if (draggedIndex !== null && dragOverIndex !== null && draggedIndex !== dragOverIndex) {
+      const reordered = [...localVisibleCards]
+      const [movedCard] = reordered.splice(draggedIndex, 1)
+      reordered.splice(dragOverIndex, 0, movedCard)
+      return reordered
+    }
+    return localVisibleCards
+  }, [localVisibleCards, draggedIndex, dragOverIndex])
 
   const handleContextMenu = useCallback((e: React.MouseEvent, index: number) => {
     e.preventDefault()
@@ -75,9 +100,11 @@ const TopDeckView: React.FC<TopDeckViewProps> = memo(({
     }
   }, [isLocked, viewCount])
 
-  const handleDragStart = useCallback((e: React.DragEvent, index: number) => {
+  const handleDragStart = useCallback((card: CardType, index: number) => {
     setDraggedIndex(index)
-    e.dataTransfer.effectAllowed = 'move'
+    setDraggedCardId(card.id)
+    draggedCardRef.current = card
+    setDroppedOutside(false)
   }, [])
 
   const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
@@ -88,26 +115,68 @@ const TopDeckView: React.FC<TopDeckViewProps> = memo(({
     }
   }, [dragOverIndex])
 
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    if (!draggedCardRef.current || !modalRef.current) {return}
+
+    const rect = modalRef.current.getBoundingClientRect()
+    const x = e.clientX
+    const y = e.clientY
+
+    // If cursor is outside modal bounds, set up draggedItem and close modal
+    if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+      const card = draggedCardRef.current
+      const index = draggedIndex ?? 0
+
+      if (setDraggedItem) {
+        setDraggedItem({
+          card,
+          source: 'deck',
+          playerId: player.id,
+          cardIndex: index,
+        })
+      }
+
+      setDroppedOutside(true)
+
+      // Close modal immediately so drop can happen on underlying elements
+      onClose()
+    }
+  }, [draggedIndex, player.id, setDraggedItem, onClose])
+
   const handleDragEnd = useCallback(() => {
-    setDraggedIndex(null)
-    setDragOverIndex(null)
-  }, [])
+    // Only cleanup if we didn't drop outside (outside case is handled by dragLeave)
+    if (!droppedOutside) {
+      setDraggedCardId(null)
+      setDraggedIndex(null)
+      setDragOverIndex(null)
+    }
+    draggedCardRef.current = null
+  }, [droppedOutside])
 
   const handleDrop = useCallback((e: React.DragEvent, targetIndex: number) => {
     e.preventDefault()
+    e.stopPropagation()
     setDragOverIndex(null)
 
+    // If drop happened but we already marked as outside, ignore
+    if (droppedOutside) {return}
+
     if (draggedIndex === null || draggedIndex === targetIndex) {
+      setDraggedIndex(null)
+      setDraggedCardId(null)
       return
     }
 
-    const newCards = [...visibleCards]
+    // Reorder the visible cards
+    const newCards = [...localVisibleCards]
     const [movedCard] = newCards.splice(draggedIndex, 1)
     newCards.splice(targetIndex, 0, movedCard)
 
+    setLocalVisibleCards(newCards)
     onReorder(player.id, newCards)
     setDraggedIndex(null)
-  }, [draggedIndex, visibleCards, onReorder, player.id])
+    setDraggedCardId(null)
+  }, [draggedIndex, localVisibleCards, onReorder, player.id, droppedOutside])
 
   const contextMenuItems: ContextMenuItem[] = useMemo(() => {
     if (!contextMenu) {
@@ -115,7 +184,7 @@ const TopDeckView: React.FC<TopDeckViewProps> = memo(({
     }
 
     return [
-      { label: t('view'), isBold: true, onClick: () => onViewCard(visibleCards[contextMenu.cardIndex]) },
+      { label: t('view'), isBold: true, onClick: () => onViewCard(displayCards[contextMenu.cardIndex]) },
       { label: t('play'), disabled: isLocked, onClick: () => {
         onPlayCard(contextMenu.cardIndex)
       } },
@@ -133,7 +202,7 @@ const TopDeckView: React.FC<TopDeckViewProps> = memo(({
         setViewCount(prev => Math.max(0, prev - 1))
       } },
     ]
-  }, [visibleCards, isLocked, onViewCard, onPlayCard, onMoveToBottom, onMoveToHand, onMoveToDiscard, contextMenu, t])
+  }, [displayCards, isLocked, onViewCard, onPlayCard, onMoveToBottom, onMoveToHand, onMoveToDiscard, contextMenu, t])
 
   if (!isOpen) {
     return null
@@ -141,9 +210,14 @@ const TopDeckView: React.FC<TopDeckViewProps> = memo(({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-[250] backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-gray-800 rounded-lg p-6 shadow-xl w-auto max-w-5xl border border-gray-600 relative flex flex-col items-center" onClick={e => e.stopPropagation()}>
+      <div
+        ref={modalRef}
+        onDragLeave={handleDragLeave}
+        className="bg-gray-800 rounded-lg p-6 shadow-xl w-auto max-w-5xl border border-gray-600 relative flex flex-col items-center"
+        onClick={e => e.stopPropagation()}
+      >
 
-        <h2 className="text-2xl font-bold text-white mb-2 text-center">{t('deckView')}</h2>
+        <h2 className="text-2xl font-bold text-white mb-2 text-center">{t('topDeckView')}</h2>
 
         <div className="flex items-center gap-4 mb-4 bg-gray-900 p-2 rounded-full border border-gray-700">
           <button
@@ -168,26 +242,28 @@ const TopDeckView: React.FC<TopDeckViewProps> = memo(({
         </p>
 
         <div className="flex justify-center flex-wrap gap-4 mb-8 min-h-[140px] px-4">
-          {visibleCards.length === 0 ? (
+          {displayCards.length === 0 ? (
             <p className="text-gray-500 italic">{t('deckEmpty')}</p>
           ) : (
-            visibleCards.map((card, index) => {
-              const isDragTarget = dragOverIndex === index
-              const isDragging = draggedIndex === index
+            displayCards.map((card, index) => {
+              // Find original index in localVisibleCards
+              const originalIndex = localVisibleCards.findIndex(c => c.id === card.id)
+              const isDragTarget = dragOverIndex === index && draggedIndex !== index
+              const isDragging = draggedCardId === card.id
 
               return (
                 <div
                   key={card.id || index}
                   draggable={true}
-                  onDragStart={(e) => handleDragStart(e, index)}
+                  onDragStart={() => handleDragStart(card, originalIndex)}
                   onDragOver={(e) => handleDragOver(e, index)}
                   onDragEnd={handleDragEnd}
                   onDrop={(e) => handleDrop(e, index)}
+                  onContextMenu={(e) => handleContextMenu(e, originalIndex)}
                   className={`w-32 h-32 relative transition-all rounded-lg
-                                        ${isDragging ? 'opacity-50 scale-95' : 'hover:scale-105 cursor-grab active:cursor-grabbing'}
-                                        ${isDragTarget ? 'ring-4 ring-cyan-400 shadow-[0_0_15px_#22d3ee] scale-105 z-10' : ''}
-                                    `}
-                  onContextMenu={(e) => handleContextMenu(e, index)}
+                    ${isDragging ? 'opacity-50 scale-95' : 'hover:scale-105 cursor-grab active:cursor-grabbing'}
+                    ${isDragTarget ? 'scale-105 z-10' : ''}
+                  `}
                 >
                   <div className="absolute -top-3 -left-2 z-20 bg-gray-900 text-gray-400 text-xs font-bold px-2 py-0.5 rounded-full border border-gray-600 shadow-md">
                                         #{index + 1}
@@ -205,6 +281,10 @@ const TopDeckView: React.FC<TopDeckViewProps> = memo(({
             })
           )}
         </div>
+
+        <p className="text-gray-400 text-xs mb-4 text-center">
+          {t('dragOutsideToMove')}
+        </p>
 
         <div className="flex justify-center">
           <button

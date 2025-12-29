@@ -1,4 +1,28 @@
-import { AbilityAction, Card, GameState } from '../types/types.js'
+/**
+ * @file Command card ability logic
+ * Shared between client and server
+ *
+ * Command card IDs:
+ * - overwatch: Aim 1 on any card. Then reveal/draw for each Aim.
+ * - tacticalManeuver: Move unit. Draw or score equal to power.
+ * - inspiration: Remove counters. Draw or score for each removed.
+ * - dataInterception: Exploit 1. Then reveal or move unit with exploit.
+ * - falseOrders: Exploit 1 on opponent unit. Then reveal or stun x2.
+ * - experimentalStimulants: Reactivate deploy or move unit in line.
+ * - logisticsChain: Score diagonal with bonus per support or draw per support.
+ * - quickResponseTeam: Deploy unit from hand or search deck for unit.
+ * - temporaryShelter: Shield 1. Then remove aim or move 1-2.
+ * - enhancedInterrogation: Aim 1. Then reveal or move card with aim.
+ * - mobilization1 / lineBreach: Gain points in a line.
+ *
+ * NOTE: Filter functions in AbilityAction payloads are runtime-only and not
+ * serializable. They are regenerated fresh on both client and server based on
+ * the same inputs (cardId, optionIndex, card, gameState, localPlayerId).
+ * This design works because only card IDs and option indices are sent over
+ * the network, not the full AbilityAction objects with their filter closures.
+ */
+
+import type { AbilityAction, Card, GameState } from '../types/types.js'
 
 /**
  * Maps specific Command Card IDs and Option Indices to a SEQUENCE of Game Actions.
@@ -9,15 +33,17 @@ export const getCommandAction = (
   cardId: string,
   optionIndex: number,
   card: Card,
-  gameState: GameState,
+  _gameState: GameState,
   localPlayerId: number,
 ): AbilityAction[] => {
   const baseId = (card.baseId || cardId.split('_')[1] || cardId).toLowerCase()
   const isMain = optionIndex === -1
   const actions: AbilityAction[] = []
 
-  // --- OVERWATCH ---
-  if (baseId.includes('overwatch')) {
+  // =========================================================================
+  // OVERWATCH - Aim tokens, then reveal or draw
+  // =========================================================================
+  if (baseId === 'overwatch') {
     // 1. Common Step: Place 1 Aim on any card.
     if (isMain) {
       actions.push({
@@ -48,8 +74,10 @@ export const getCommandAction = (
     }
   }
 
-  // --- TACTICAL MANEUVER ---
-  else if (baseId.includes('tacticalmaneuver')) {
+  // =========================================================================
+  // TACTICAL MANEUVER - Move unit, then draw or score
+  // =========================================================================
+  else if (baseId === 'tacticalmaneuver') {
     // Option 0: Move Own Unit -> Draw = Power.
     if (optionIndex === 0) {
       actions.push({
@@ -80,8 +108,10 @@ export const getCommandAction = (
     }
   }
 
-  // --- INSPIRATION ---
-  else if (baseId.includes('inspiration')) {
+  // =========================================================================
+  // INSPIRATION - Remove counters, then draw or score
+  // =========================================================================
+  else if (baseId === 'inspiration') {
     // 3. Common Step: Select Own Unit -> Open Modal.
     if (isMain) {
       actions.push({
@@ -97,8 +127,10 @@ export const getCommandAction = (
     // Rewards are handled by the payload injection in handleCommandConfirm
   }
 
-  // --- DATA INTERCEPTION ---
-  else if (baseId.includes('datainterception')) {
+  // =========================================================================
+  // DATA INTERCEPTION - Exploit tokens, then reveal or move
+  // =========================================================================
+  else if (baseId === 'datainterception') {
     // 1. Common Step: Place 1 Exploit on any card.
     if (isMain) {
       actions.push({
@@ -110,7 +142,6 @@ export const getCommandAction = (
     }
 
     // Option 0: Count Total Exploits (X) -> Place X Reveal tokens.
-    // Valid targets: Opponents, Face-down/Hand. Exclude cards with existing Reveal from self.
     else if (optionIndex === 0) {
       actions.push({
         type: 'CREATE_STACK',
@@ -130,14 +161,16 @@ export const getCommandAction = (
         sourceCard: card,
         payload: {
           range: 2,
-          filter: (target: Card) => target.statuses?.some(s => s.type === 'Exploit' && s.addedByPlayerId === localPlayerId) || false,
+          filter: (target: Card) => target.statuses?.some((s: { type: string; addedByPlayerId?: number }) => s.type === 'Exploit' && s.addedByPlayerId === localPlayerId) || false,
         },
       })
     }
   }
 
-  // --- FALSE ORDERS ---
-  else if (baseId.includes('falseorders')) {
+  // =========================================================================
+  // FALSE ORDERS - Exploit on opponent, then reveal or stun
+  // =========================================================================
+  else if (baseId === 'falseorders') {
     // 1. Common Step: CREATE STACK Exploit (1) on Opponent Unit -> Record Context
     if (isMain) {
       actions.push({
@@ -193,8 +226,10 @@ export const getCommandAction = (
     }
   }
 
-  // --- EXPERIMENTAL STIMULANTS ---
-  else if (baseId.includes('experimentalstimulants')) {
+  // =========================================================================
+  // EXPERIMENTAL STIMULANTS - Reactivate deploy or move unit in line
+  // =========================================================================
+  else if (baseId === 'experimentalstimulants') {
     // Option 0: Reactivate Deploy (Reset flag)
     if (optionIndex === 0) {
       actions.push({
@@ -221,8 +256,10 @@ export const getCommandAction = (
     }
   }
 
-  // --- LOGISTICS CHAIN ---
-  else if (baseId.includes('logisticschain')) {
+  // =========================================================================
+  // LOGISTICS CHAIN - Score diagonal with bonus per support or draw per support
+  // =========================================================================
+  else if (baseId === 'logisticschain') {
     // Option 0: Score Diagonal + 1 per Support
     if (optionIndex === 0) {
       actions.push({
@@ -243,8 +280,10 @@ export const getCommandAction = (
     }
   }
 
-  // --- QUICK RESPONSE TEAM ---
-  else if (baseId.includes('quickresponseteam')) {
+  // =========================================================================
+  // QUICK RESPONSE TEAM - Deploy unit from hand or search deck
+  // =========================================================================
+  else if (baseId === 'quickresponseteam') {
     // Option 0: Deploy Unit from Hand
     if (optionIndex === 0) {
       actions.push({
@@ -268,8 +307,10 @@ export const getCommandAction = (
     }
   }
 
-  // --- TEMPORARY SHELTER ---
-  else if (baseId.includes('temporaryshelter')) {
+  // =========================================================================
+  // TEMPORARY SHELTER - Shield and remove aim or move
+  // =========================================================================
+  else if (baseId === 'temporaryshelter') {
     // Option 0: Shield (Stack) -> Remove All Aim (Context)
     if (optionIndex === 0) {
       actions.push({
@@ -303,8 +344,10 @@ export const getCommandAction = (
     }
   }
 
-  // --- ENHANCED INTERROGATION ---
-  else if (baseId.includes('enhancedinterrogation')) {
+  // =========================================================================
+  // ENHANCED INTERROGATION - Aim tokens, then reveal or move
+  // =========================================================================
+  else if (baseId === 'enhancedinterrogation') {
     // Common Logic: Place 1 Aim token first
     if (isMain) {
       actions.push({
@@ -316,7 +359,6 @@ export const getCommandAction = (
     }
 
     // Option 0: Count Total Aim (X) -> Place X Reveal tokens.
-    // Valid targets: Opponents, Face-down/Hand. Exclude cards with existing Reveal from self.
     else if (optionIndex === 0) {
       actions.push({
         type: 'CREATE_STACK',
@@ -336,13 +378,16 @@ export const getCommandAction = (
         sourceCard: card,
         payload: {
           range: 2,
-          filter: (target: Card) => target.statuses?.some(s => s.type === 'Aim' && s.addedByPlayerId === localPlayerId) || false,
+          filter: (target: Card) => target.statuses?.some((s: { type: string; addedByPlayerId?: number }) => s.type === 'Aim' && s.addedByPlayerId === localPlayerId) || false,
         },
       })
     }
   }
-  // --- LINE BREACH (Mobilization 1) ---
-  else if (baseId.includes('mobilization1') || baseId.includes('linebreach')) {
+
+  // =========================================================================
+  // LINE BREACH (Mobilization 1) - Gain points in a line
+  // =========================================================================
+  else if (baseId === 'mobilization1' || baseId === 'linebreach') {
     if (isMain) {
       actions.push({
         type: 'ENTER_MODE',

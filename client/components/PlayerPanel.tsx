@@ -1,7 +1,7 @@
 import React, { memo, useRef, useState, useEffect } from 'react'
 import { DeckType as DeckTypeEnum } from '@/types'
 import type { Player, PlayerColor, Card as CardType, DragItem, DropTarget, CustomDeckFile, ContextMenuParams } from '@/types'
-import { PLAYER_COLORS, PLAYER_POSITIONS, GAME_ICONS } from '@/constants'
+import { PLAYER_COLORS, GAME_ICONS } from '@/constants'
 import { getSelectableDecks } from '@/content'
 import { Card as CardComponent } from './Card'
 import { CardTooltipContent } from './Tooltip'
@@ -19,7 +19,6 @@ interface PlayerPanelProps {
   localPlayerId: number | null;
   isSpectator: boolean;
   isGameStarted: boolean;
-  position: number;
   onNameChange: (name: string) => void;
   onColorChange: (color: PlayerColor) => void;
   onScoreChange: (delta: number) => void;
@@ -34,17 +33,18 @@ interface PlayerPanelProps {
   playerColorMap: Map<number, PlayerColor>;
   allPlayers: Player[];
   localPlayerTeamId?: number;
-  activeTurnPlayerId?: number;
-  onToggleActiveTurn: (playerId: number) => void;
+  activePlayerId?: number | null; // Aligned with GameState type (null when no active player)
+  onToggleActivePlayer: (playerId: number) => void;
   imageRefreshVersion: number;
-  layoutMode: 'standard' | 'list-local' | 'list-remote';
+  layoutMode: 'list-local' | 'list-remote';
   onCardClick?: (player: Player, card: CardType, index: number) => void;
   validHandTargets?: { playerId: number, cardIndex: number }[];
   onAnnouncedCardDoubleClick?: (player: Player, card: CardType) => void;
   currentPhase: number;
   disableActiveHighlights?: boolean;
+  preserveDeployAbilities?: boolean;
   roundWinners?: Record<number, number[]>;
-  startingPlayerId?: number;
+  startingPlayerId?: number | null; // Aligned with GameState type (null when not set)
   onDeckClick?: (playerId: number) => void;
   isDeckSelectable?: boolean;
 }
@@ -180,7 +180,6 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
   isLocalPlayer,
   localPlayerId,
   isGameStarted,
-  position,
   onNameChange,
   onColorChange,
   onScoreChange,
@@ -195,8 +194,8 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
   playerColorMap,
   allPlayers,
   localPlayerTeamId,
-  activeTurnPlayerId,
-  onToggleActiveTurn,
+  activePlayerId,
+  onToggleActivePlayer,
   imageRefreshVersion,
   layoutMode,
   onCardClick,
@@ -204,17 +203,18 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
   onAnnouncedCardDoubleClick,
   currentPhase,
   disableActiveHighlights,
+  preserveDeployAbilities = false,
   roundWinners,
   startingPlayerId,
   onDeckClick,
   isDeckSelectable,
 }) => {
-  const { t } = useLanguage()
+  const { t, resources } = useLanguage()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const canPerformActions: boolean = isLocalPlayer || !!player.isDummy
 
-  const isActiveTurn = activeTurnPlayerId === player.id
+  const isPlayerActive = activePlayerId === player.id
   const isTeammate = localPlayerTeamId !== undefined && player.teamId === localPlayerTeamId && !isLocalPlayer
   const isDisconnected = !!player.isDisconnected
 
@@ -225,7 +225,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
   const isFirstPlayer = startingPlayerId === player.id
   const firstPlayerIconUrl = GAME_ICONS.FIRST_PLAYER
   const ROUND_WIN_MEDAL_URL = GAME_ICONS.ROUND_WIN_MEDAL
-  const shouldFlashDeck = isActiveTurn && currentPhase === 0
+  const shouldFlashDeck = isPlayerActive && currentPhase === 0
 
   const handleDeckSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     onDeckChange(e.target.value as DeckTypeEnum)
@@ -269,7 +269,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
   }
 
   if (layoutMode === 'list-local') {
-    const borderClass = isActiveTurn ? 'border-yellow-400' : 'border-gray-700'
+    const borderClass = isPlayerActive ? 'border-yellow-400' : 'border-gray-700'
 
     return (
       <div className={`w-full h-full flex flex-col p-4 bg-panel-bg border-2 ${borderClass} rounded-lg shadow-2xl ${isDisconnected ? 'opacity-60' : ''}`}>
@@ -283,7 +283,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
             {winCount > 0 && Array.from({ length: winCount }).map((_, i) => (
               <img key={`win-${i}`} src={ROUND_WIN_MEDAL_URL} alt="Round Winner" className="w-6 h-6 drop-shadow-md mr-2 flex-shrink-0" title="Round Winner" />
             ))}
-            <input type="checkbox" checked={isActiveTurn} onChange={() => onToggleActiveTurn(player.id)} disabled={!isLocalPlayer && !player.isDummy} className={`w-6 h-6 text-yellow-400 bg-gray-700 border-gray-600 rounded flex-shrink-0 ${!isLocalPlayer && !player.isDummy ? 'cursor-default' : 'cursor-pointer'}`} title="Active Turn" />
+            <input type="checkbox" checked={isPlayerActive} onChange={() => onToggleActivePlayer(player.id)} disabled={!isLocalPlayer && !player.isDummy} className={`w-6 h-6 text-yellow-400 bg-gray-700 border-gray-600 rounded flex-shrink-0 ${!isLocalPlayer && !player.isDummy ? 'cursor-default' : 'cursor-pointer'}`} title="Active Player" />
           </div>
         </div>
 
@@ -292,7 +292,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
             {/* Deck */}
             <DropZone className="relative" onDrop={() => draggedItem && handleDrop(draggedItem, { target: 'deck', playerId: player.id, deckPosition: 'top' })} onContextMenu={(e) => openContextMenu(e, 'deckPile', { player })}>
               <div onClick={handleDeckInteraction} className={`aspect-square bg-card-back rounded flex flex-col items-center justify-center cursor-pointer hover:ring-2 ring-indigo-400 transition-all shadow-md select-none text-white border-2 border-transparent ${shouldFlashDeck ? 'animate-deck-start' : ''} ${isDeckSelectable ? 'ring-4 ring-sky-400 shadow-[0_0_15px_#38bdf8] animate-pulse' : ''}`}>
-                <span className="text-[10px] sm:text-xs font-bold mb-0.5 uppercase tracking-tight">Deck</span>
+                <span className="text-[10px] sm:text-xs font-bold mb-0.5 uppercase tracking-tight">{t('deck')}</span>
                 <span className="text-base sm:text-lg font-bold">{player.deck.length}</span>
               </div>
             </DropZone>
@@ -300,7 +300,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
             {/* Discard */}
             <DropZone onDrop={() => draggedItem && handleDrop(draggedItem, { target: 'discard', playerId: player.id })} onContextMenu={(e) => openContextMenu(e, 'discardPile', { player })} isOverClassName="bg-indigo-600 ring-2">
               <div className="aspect-square bg-gray-700 rounded flex flex-col items-center justify-center cursor-pointer hover:bg-gray-600 transition-all shadow-md border border-gray-600 select-none text-white">
-                <span className="text-[10px] sm:text-xs font-bold mb-0.5 text-gray-400 uppercase tracking-tight">Discard</span>
+                <span className="text-[10px] sm:text-xs font-bold mb-0.5 text-gray-400 uppercase tracking-tight">{t('discard')}</span>
                 <span className="text-base sm:text-lg font-bold">{player.discard.length}</span>
               </div>
             </DropZone>
@@ -319,7 +319,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
                       isManual: true
                     })}
                     onDragEnd={() => setDraggedItem(null)}
-                    onContextMenu={(e) => canPerformActions && openContextMenu(e, 'announcedCard', {
+                    onContextMenu={(e) => canPerformActions && player.announcedCard && openContextMenu(e, 'announcedCard', {
                       card: player.announcedCard,
                       player
                     })}
@@ -331,11 +331,12 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
                       playerColorMap={playerColorMap}
                       imageRefreshVersion={imageRefreshVersion}
                       activePhaseIndex={currentPhase}
-                      activeTurnPlayerId={activeTurnPlayerId}
+                      activePlayerId={activePlayerId}
                       disableActiveHighlights={disableActiveHighlights}
+                      preserveDeployAbilities={preserveDeployAbilities}
                     />
                   </div>
-                ) : <span className="text-[10px] sm:text-xs font-bold text-gray-500 select-none uppercase tracking-tight">Showcase</span>}
+                ) : <span className="text-[10px] sm:text-xs font-bold text-gray-500 select-none uppercase tracking-tight">{t('showcase')}</span>}
               </div>
             </DropZone>
 
@@ -351,13 +352,13 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
         {!isGameStarted && canPerformActions && (
           <div className="mb-[3px] flex-shrink-0 text-white">
             <select value={player.selectedDeck} onChange={handleDeckSelectChange} className="w-full bg-gray-700 border border-gray-600 rounded p-2 mb-2">
-              {selectableDecks.map(deck => <option key={deck.id} value={deck.id}>{deck.name}</option>)}
-              <option value={DeckTypeEnum.Custom}>Custom Deck</option>
+              {selectableDecks.map(deck => <option key={deck.id} value={deck.id}>{resources.deckNames[deck.id as keyof typeof resources.deckNames] || deck.name}</option>)}
+              <option value={DeckTypeEnum.Custom}>{t('customDeck')}</option>
             </select>
             {player.selectedDeck === DeckTypeEnum.Custom && (
               <div className="flex gap-2">
                 <input type="file" ref={fileInputRef} onChange={handleFileSelected} accept=".json" className="hidden" />
-                <button onClick={handleLoadDeckClick} className="w-full bg-indigo-600 hover:bg-indigo-700 py-1 rounded font-bold">Load Custom Deck</button>
+                <button onClick={handleLoadDeckClick} className="w-full bg-indigo-600 hover:bg-indigo-700 py-1 rounded font-bold">{t('loadDeck')}</button>
               </div>
             )}
           </div>
@@ -402,6 +403,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
                         imageRefreshVersion={imageRefreshVersion}
                         disableTooltip={true}
                         disableActiveHighlights={disableActiveHighlights}
+                        preserveDeployAbilities={preserveDeployAbilities}
                       />
                     </div>
                     <div className="flex-grow min-w-0">
@@ -409,7 +411,6 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
                         card={card}
                         className="relative flex flex-col text-left w-full h-full justify-start whitespace-normal break-words"
                         hideOwner={card.ownerId === player.id}
-                        powerPosition="inner"
                       />
                     </div>
                   </div>
@@ -423,7 +424,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
   }
 
   if (layoutMode === 'list-remote') {
-    const borderClass = isActiveTurn ? 'border-yellow-400' : 'border-gray-700'
+    const borderClass = isPlayerActive ? 'border-yellow-400' : 'border-gray-700'
     return (
       <div className={`w-full h-full flex flex-col p-1 pt-[1px] bg-panel-bg border-2 ${borderClass} rounded-lg shadow-xl ${isDisconnected ? 'opacity-60' : ''} overflow-hidden`}>
         {/* Header */}
@@ -438,8 +439,8 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
               onChange={handleDeckSelectChange}
               className="text-sm bg-gray-700 text-white border border-gray-600 rounded px-1 py-0 h-6 w-[135px] focus:outline-none truncate"
             >
-              {selectableDecks.map(deck => <option key={deck.id} value={deck.id}>{deck.name}</option>)}
-              <option value={DeckTypeEnum.Custom}>Custom</option>
+              {selectableDecks.map(deck => <option key={deck.id} value={deck.id}>{resources.deckNames[deck.id as keyof typeof resources.deckNames] || deck.name}</option>)}
+              <option value={DeckTypeEnum.Custom}>{t('customDeck')}</option>
             </select>
           )}
 
@@ -450,11 +451,11 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
             {winCount > 0 && <span className="text-yellow-500 text-base font-bold">★{winCount}</span>}
             <input
               type="checkbox"
-              checked={isActiveTurn}
-              onChange={() => onToggleActiveTurn(player.id)}
+              checked={isPlayerActive}
+              onChange={() => onToggleActivePlayer(player.id)}
               disabled={!canPerformActions}
               className="w-4 h-4 text-yellow-400 bg-gray-700 border-gray-600 rounded cursor-pointer flex-shrink-0 accent-yellow-500"
-              title="Active Turn"
+              title="Active Player"
             />
           </div>
         </div>
@@ -467,7 +468,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
             {/* Deck */}
             <DropZone className="h-full aspect-square relative" onDrop={() => draggedItem && handleDrop(draggedItem, { target: 'deck', playerId: player.id, deckPosition: 'top' })} onContextMenu={(e) => openContextMenu(e, 'deckPile', { player })}>
               <RemotePile
-                label="DECK"
+                label={t('deck')}
                 count={player.deck.length}
                 onClick={handleDeckInteraction}
                 className={`bg-card-back ${shouldFlashDeck ? 'animate-deck-start' : ''} ${isDeckSelectable ? 'ring-4 ring-sky-400 shadow-[0_0_15px_#38bdf8] animate-pulse' : ''}`}
@@ -477,7 +478,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
             {/* Discard */}
             <DropZone className="h-full aspect-square relative" onDrop={() => draggedItem && handleDrop(draggedItem, { target: 'discard', playerId: player.id })} onContextMenu={(e) => openContextMenu(e, 'discardPile', { player })} isOverClassName="ring-2 ring-indigo-500">
               <RemotePile
-                label="DISC"
+                label={t('discard')}
                 count={player.discard.length}
                 className="bg-gray-700"
               />
@@ -497,7 +498,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
                       isManual: true
                     })}
                     onDragEnd={() => setDraggedItem(null)}
-                    onContextMenu={(e) => openContextMenu(e, 'announcedCard', {
+                    onContextMenu={(e) => player.announcedCard && openContextMenu(e, 'announcedCard', {
                       card: player.announcedCard,
                       player
                     })}
@@ -510,6 +511,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
                       imageRefreshVersion={imageRefreshVersion}
                       disableTooltip={false}
                       disableActiveHighlights={disableActiveHighlights}
+                      preserveDeployAbilities={preserveDeployAbilities}
                     />
                   </div>
                 ) : <span className="text-[9px] font-bold text-gray-500 select-none uppercase">SHOW</span>}
@@ -568,6 +570,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
                       disableTooltip={!isVisible}
                       disableActiveHighlights={disableActiveHighlights}
                       smallStatusIcons={true}
+                      preserveDeployAbilities={preserveDeployAbilities}
                     />
                   </div>
                 </div>
@@ -580,33 +583,8 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
     )
   }
 
-  const posClass = PLAYER_POSITIONS[position] || 'top-20 left-20'
-  const borderClass = isActiveTurn ? 'border-yellow-400' : 'border-gray-700'
-
-  return (
-    <div className={`absolute ${posClass} w-64 bg-panel-bg bg-opacity-90 p-4 rounded-lg shadow-lg border-2 ${borderClass} flex flex-col gap-2 z-20 ${isDisconnected ? 'opacity-60' : ''}`}>
-      <div className="flex justify-between items-center text-white">
-        <div className="flex items-center gap-2">
-          <div className={`w-3 h-3 rounded-full ${PLAYER_COLORS[player.color].bg}`}></div>
-          <span className="font-bold">{player.name}</span>
-        </div>
-        <span className="font-mono text-xl">{player.score}</span>
-      </div>
-
-      <div className="flex gap-2 h-20">
-        <div onClick={handleDeckInteraction} className={`flex-1 bg-gray-800 rounded flex items-center justify-center border border-gray-600 cursor-pointer hover:bg-gray-700 transition-colors ${isDeckSelectable ? 'ring-4 ring-sky-400 shadow-[0_0_15px_#38bdf8] animate-pulse' : ''}`}>
-          <span className="text-white font-bold">{player.deck.length} {t('cards')}</span>
-        </div>
-        <div className="w-20 bg-gray-800 border-dashed border border-gray-600 rounded flex items-center justify-center p-1">
-          {player.announcedCard ? (
-            <div className="w-full h-full" onContextMenu={(e) => openContextMenu(e, 'announcedCard', { card: player.announcedCard, player })}>
-              <CardComponent card={player.announcedCard} isFaceUp={true} playerColorMap={playerColorMap} imageRefreshVersion={imageRefreshVersion} disableTooltip={true} />
-            </div>
-          ) : <span className="text-xs text-gray-500">Empty</span>}
-        </div>
-      </div>
-    </div>
-  )
+  // Should never reach here since layoutMode is always 'list-local' or 'list-remote'
+  return null
 })
 
 export { PlayerPanel }

@@ -36,8 +36,8 @@ import type {
 } from './types'
 import { GameMode, DeckType } from './types'
 import { STATUS_ICONS, STATUS_DESCRIPTIONS } from './constants'
-import { countersDatabase } from './content'
-import { validateTarget, calculateValidTargets, checkActionHasTargets } from './utils/targeting'
+import { countersDatabase, fetchContentDatabase } from './content'
+import { validateTarget, calculateValidTargets, checkActionHasTargets } from '@server/utils/targeting'
 import { useLanguage } from './contexts/LanguageContext'
 
 const COUNTER_BG_URL = 'https://res.cloudinary.com/dxxh6meej/image/upload/v1763653192/background_counter_socvss.png'
@@ -92,7 +92,8 @@ const App = memo(function App() {
     respondToRevealRequest,
     syncGame,
     resetGame,
-    toggleActiveTurnPlayer,
+    toggleActivePlayer,
+    toggleAutoDraw,
     forceReconnect,
     triggerHighlight,
     latestHighlight,
@@ -116,6 +117,8 @@ const App = memo(function App() {
     scoreDiagonal,
     removeStatusByType,
     reorderTopDeck,
+    reorderCards,
+    triggerFloatingText,
   } = gameStateHook
 
   const [modalsState, setModalsState] = useState({
@@ -156,10 +159,6 @@ const App = memo(function App() {
   } | null>(null)
 
   const [viewingCard, setViewingCard] = useState<{ card: Card; player?: Player } | null>(null)
-  const [isListMode, setIsListMode] = useState(() => {
-    const savedMode = localStorage.getItem('ui_list_mode')
-    return savedMode === null ? true : savedMode === 'true'
-  })
 
   const [imageRefreshVersion, setImageRefreshVersion] = useState<number>(() => {
     try {
@@ -184,13 +183,84 @@ const App = memo(function App() {
 
   const [highlight, setHighlight] = useState<HighlightData | null>(null)
   const [activeFloatingTexts, setActiveFloatingTexts] = useState<FloatingTextData[]>([])
-  const [isAutoAbilitiesEnabled, setIsAutoAbilitiesEnabled] = useState(true)
+
+  // Load auto-abilities setting from localStorage
+  const [isAutoAbilitiesEnabled, setIsAutoAbilitiesEnabled] = useState(() => {
+    try {
+      const saved = localStorage.getItem('auto_abilities_enabled')
+      return saved === null ? true : saved === 'true'
+    } catch {
+      return true
+    }
+  })
+
+  // Save auto-abilities setting to localStorage when it changes
+  useEffect(() => {
+    try {
+      localStorage.setItem('auto_abilities_enabled', String(isAutoAbilitiesEnabled))
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, [isAutoAbilitiesEnabled])
+
+  // Auto-draw is now stored per-player in gameState.players
+  const isAutoDrawEnabled = useMemo(() => {
+    if (!localPlayerId) {
+      return false
+    }
+    const localPlayer = gameState.players.find(p => p.id === localPlayerId)
+    return localPlayer?.autoDrawEnabled ?? true // Default to true if not set
+  }, [gameState.players, localPlayerId])
+
+  // Sync auto-draw setting with localStorage when player joins game
+  // And apply saved setting to the player
+  useEffect(() => {
+    if (!localPlayerId || !gameState.gameId || gameState.isGameStarted) {
+      return
+    }
+
+    // Load saved auto-draw preference from localStorage
+    let savedAutoDraw = true // Default to true
+    try {
+      const saved = localStorage.getItem('auto_draw_enabled')
+      if (saved !== null) {
+        savedAutoDraw = saved === 'true'
+      }
+    } catch {
+      // Ignore localStorage errors
+    }
+
+    // Check if current player's autoDraw setting matches saved value
+    const localPlayer = gameState.players.find(p => p.id === localPlayerId)
+    if (localPlayer && localPlayer.autoDrawEnabled !== savedAutoDraw) {
+      // Send update to server to sync
+      toggleAutoDraw(localPlayerId, savedAutoDraw)
+    }
+  }, [localPlayerId, gameState.gameId, gameState.isGameStarted, gameState.players, toggleAutoDraw])
+
+  // Save auto-draw setting to localStorage when it changes
+  useEffect(() => {
+    if (!localPlayerId) {
+      return
+    }
+    const localPlayer = gameState.players.find(p => p.id === localPlayerId)
+    if (localPlayer && localPlayer.autoDrawEnabled !== undefined) {
+      try {
+        localStorage.setItem('auto_draw_enabled', String(localPlayer.autoDrawEnabled))
+      } catch {
+        // Ignore localStorage errors
+      }
+    }
+  }, [localPlayerId, gameState.players])
+
+  const [justAutoTransitioned, setJustAutoTransitioned] = useState(false)
   const [abilityMode, setAbilityMode] = useState<AbilityAction | null>(null)
   const [actionQueue, setActionQueue] = useState<AbilityAction[]>([])
   const [validTargets, setValidTargets] = useState<{row: number, col: number}[]>([])
   const [validHandTargets, setValidHandTargets] = useState<{playerId: number, cardIndex: number}[]>([])
   const [noTargetOverlay, setNoTargetOverlay] = useState<{row: number, col: number} | null>(null)
   const [commandContext, setCommandContext] = useState<CommandContext>({})
+  const [abilityCheckKey, setAbilityCheckKey] = useState(0)
   const leftPanelRef = useRef<HTMLDivElement>(null)
   const boardContainerRef = useRef<HTMLDivElement>(null)
   const [sidePanelWidth, setSidePanelWidth] = useState<number | undefined>(undefined)
@@ -224,6 +294,12 @@ const App = memo(function App() {
     removeBoardCardStatus,
   })
 
+  // Wrapper for nextPhase that sets justAutoTransitioned flag
+  const handleNextPhase = useCallback(() => {
+    setJustAutoTransitioned(true)
+    nextPhase()
+  }, [nextPhase])
+
   const {
     executeAction,
     handleBoardCardClick,
@@ -243,6 +319,7 @@ const App = memo(function App() {
     setPlayMode,
     setCounterSelectionData,
     interactionLock,
+    onAbilityComplete: () => setAbilityCheckKey(prev => prev + 1),
     moveItem,
     drawCard,
     updatePlayerScore,
@@ -254,7 +331,7 @@ const App = memo(function App() {
     resurrectDiscardedCard,
     spawnToken,
     scoreLine,
-    nextPhase,
+    nextPhase: handleNextPhase,
     modifyBoardCardPower,
     addBoardCardStatus,
     removeBoardCardStatus,
@@ -262,6 +339,7 @@ const App = memo(function App() {
     resetDeployStatus,
     scoreDiagonal,
     removeStatusByType,
+    triggerFloatingText,
   })
 
   const handleAnnouncedCardDoubleClick = (player: Player, card: Card) => {
@@ -483,9 +561,6 @@ const App = memo(function App() {
 
   useLayoutEffect(() => {
     const handleResize = () => {
-      if (!isListMode) {
-        return
-      }
       const headerHeight = 56
       const availableHeight = window.innerHeight - headerHeight
       const boardWidth = availableHeight
@@ -499,7 +574,14 @@ const App = memo(function App() {
     window.addEventListener('resize', handleResize)
     handleResize()
     return () => window.removeEventListener('resize', handleResize)
-  }, [isListMode])
+  }, [])
+
+  // Load content database from server on mount
+  useEffect(() => {
+    fetchContentDatabase().catch(err => {
+      console.error('Failed to load content database:', err)
+    })
+  }, [])
 
   useEffect(() => {
     const handleGlobalClickCapture = (e: MouseEvent) => {
@@ -515,7 +597,7 @@ const App = memo(function App() {
   useEffect(() => {
     const handleCancelInteraction = () => {
       if (abilityMode?.sourceCoords && abilityMode.sourceCoords.row >= 0) {
-        markAbilityUsed(abilityMode.sourceCoords, abilityMode.isDeployAbility)
+        markAbilityUsed(abilityMode.sourceCoords, abilityMode.isDeployAbility, false, abilityMode.readyStatusToRemove)
       }
       if (cursorStack?.sourceCoords && cursorStack.sourceCoords.row >= 0) {
         markAbilityUsed(cursorStack.sourceCoords, cursorStack.isDeployAbility)
@@ -580,11 +662,51 @@ const App = memo(function App() {
   useEffect(() => {
     if (latestNoTarget) {
       setNoTargetOverlay(latestNoTarget.coords)
-      const timer = setTimeout(() => setNoTargetOverlay(null), 750)
+      const timer = setTimeout(() => setNoTargetOverlay(null), 2000) // Match the CSS animation duration
       return () => clearTimeout(timer)
     }
     return undefined
   }, [latestNoTarget])
+
+  // Track token status changes for ability readiness recheck
+  const tokenHashRef = useRef<string>('')
+
+  // Reset justAutoTransitioned when phase changes
+  useEffect(() => {
+    setJustAutoTransitioned(false)
+  }, [gameState.currentPhase])
+
+  // Recheck ability readiness when phase changes
+  useEffect(() => {
+    setAbilityCheckKey(prev => prev + 1)
+  }, [gameState.currentPhase])
+
+  // Recheck ability readiness when Support/Threat tokens change on active player's cards
+  useEffect(() => {
+    const activePlayerId = gameState.activePlayerId
+    if (activePlayerId === undefined) {
+      return
+    }
+
+    // Count Support and Threat tokens on all active player's cards
+    let tokenHash = ''
+    gameState.board.forEach(row => {
+      row.forEach(cell => {
+        if (cell.card?.ownerId === activePlayerId && cell.card.statuses) {
+          const supportCount = cell.card.statuses.filter(s => s.type === 'Support').length
+          const threatCount = cell.card.statuses.filter(s => s.type === 'Threat').length
+          const stunCount = cell.card.statuses.filter(s => s.type === 'Stun').length
+          tokenHash += `${cell.card.id}:${supportCount}:${threatCount}:${stunCount};`
+        }
+      })
+    })
+
+    // Use ref to track previous hash and trigger recheck when it changes
+    if (tokenHashRef.current !== tokenHash) {
+      tokenHashRef.current = tokenHash
+      setAbilityCheckKey(prev => prev + 1)
+    }
+  }, [gameState.board, gameState.activePlayerId])
 
   useEffect(() => {
     let effectiveAction: AbilityAction | null = abilityMode
@@ -606,7 +728,7 @@ const App = memo(function App() {
     }
 
     // Effective actor logic for highlighting valid targets
-    let actorId: number | null = localPlayerId || gameState.activeTurnPlayerId || null
+    let actorId: number | null = localPlayerId || gameState.activePlayerId || null
     if (effectiveAction?.sourceCard?.ownerId) {
       actorId = effectiveAction.sourceCard.ownerId
     } else if (effectiveAction?.sourceCoords &&
@@ -619,8 +741,8 @@ const App = memo(function App() {
       if (sourceCard?.ownerId) {
         actorId = sourceCard.ownerId
       }
-    } else if (gameState.activeTurnPlayerId) {
-      const activePlayer = gameState.players.find(p => p.id === gameState.activeTurnPlayerId)
+    } else if (gameState.activePlayerId) {
+      const activePlayer = gameState.players.find(p => p.id === gameState.activePlayerId)
       if (activePlayer?.isDummy) {
         actorId = activePlayer.id
       }
@@ -700,7 +822,7 @@ const App = memo(function App() {
     setValidHandTargets(handTargets)
     return undefined
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [abilityMode, cursorStack, gameState.board, gameState.players, localPlayerId, commandContext, gameState.activeTurnPlayerId])
+  }, [abilityMode, cursorStack, gameState.board, gameState.players, localPlayerId, commandContext, gameState.activePlayerId])
 
   useEffect(() => {
     if (latestHighlight) {
@@ -718,7 +840,7 @@ const App = memo(function App() {
 
       const timer = setTimeout(() => {
         setActiveFloatingTexts(prev => prev.filter(item => !newTexts.find(nt => nt.id === item.id)))
-      }, 1500)
+      }, 2000)
 
       return () => clearTimeout(timer)
     }
@@ -734,7 +856,7 @@ const App = memo(function App() {
     }
 
     if (gameState.isScoringStep && !abilityMode) {
-      const activePlayerId = gameState.activeTurnPlayerId
+      const activePlayerId = gameState.activePlayerId
       const activePlayer = gameState.players.find(p => p.id === activePlayerId)
       // Allow control if it's local player's turn OR if it's a dummy turn (anyone helps dummy)
       const canControl = activePlayer && (activePlayer.id === localPlayerId || activePlayer.isDummy)
@@ -774,7 +896,7 @@ const App = memo(function App() {
         }
       }
     }
-  }, [gameState.isScoringStep, gameState.activeTurnPlayerId, localPlayerId, gameState.board, abilityMode, nextPhase, gameState.players])
+  }, [gameState.isScoringStep, gameState.activePlayerId, localPlayerId, gameState.board, abilityMode, nextPhase, gameState.players])
 
   useEffect(() => {
     if (actionQueue.length > 0 && !abilityMode && !cursorStack) {
@@ -858,8 +980,8 @@ const App = memo(function App() {
           }
         } else if (actionToProcess.payload?.resourceChange) {
           const { draw, score } = actionToProcess.payload.resourceChange
-          const activePlayerId = actionToProcess.sourceCard?.ownerId || gameState.activeTurnPlayerId
-          if (activePlayerId !== undefined) {
+          const activePlayerId = actionToProcess.sourceCard?.ownerId || gameState.activePlayerId
+          if (activePlayerId !== undefined && activePlayerId !== null) {
             if (draw) {
               const count = typeof draw === 'number' ? draw : 1
               for (let i = 0; i < count; i++) {
@@ -873,6 +995,9 @@ const App = memo(function App() {
         } else if (actionToProcess.payload?.contextReward && actionToProcess.sourceCard) {
           // This is handled inside useAppAbilities now for better access to board state
           // but we call executeAction to trigger it
+          executeAction(actionToProcess, actionToProcess.sourceCoords || { row: -1, col: -1 })
+        } else if (actionToProcess.payload?.customAction && actionToProcess.sourceCard) {
+          // Handle custom actions like FINN_SCORING
           executeAction(actionToProcess, actionToProcess.sourceCoords || { row: -1, col: -1 })
         }
       } else if (actionToProcess.type === 'CREATE_STACK' || actionToProcess.type === 'OPEN_MODAL') {
@@ -893,7 +1018,7 @@ const App = memo(function App() {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [actionQueue, abilityMode, cursorStack, localPlayerId, drawCard, updatePlayerScore, gameState.activeTurnPlayerId, gameState.board, moveItem, commandContext, addBoardCardStatus, gameState.players, executeAction, triggerNoTarget])
+  }, [actionQueue, abilityMode, cursorStack, localPlayerId, drawCard, updatePlayerScore, gameState.activePlayerId, gameState.board, moveItem, commandContext, addBoardCardStatus, gameState.players, executeAction, triggerNoTarget])
 
   const closeAllModals = useCallback(() => {
     setModalsState(prev => ({
@@ -947,8 +1072,6 @@ const App = memo(function App() {
 
   const handleSaveSettings = useCallback((url: string) => {
     localStorage.setItem('custom_ws_url', url.trim())
-    const savedMode = localStorage.getItem('ui_list_mode')
-    setIsListMode(savedMode === null ? true : savedMode === 'true')
     setModalsState(prev => ({ ...prev, isSettingsModalOpen: false }))
     forceReconnect()
   }, [forceReconnect])
@@ -1480,6 +1603,12 @@ const App = memo(function App() {
         onSetPhase={setPhase}
         isAutoAbilitiesEnabled={isAutoAbilitiesEnabled}
         onToggleAutoAbilities={setIsAutoAbilitiesEnabled}
+        isAutoDrawEnabled={isAutoDrawEnabled}
+        onToggleAutoDraw={(enabled) => {
+          if (localPlayerId) {
+            toggleAutoDraw(localPlayerId, enabled)
+          }
+        }}
         isScoringStep={gameState.isScoringStep}
         currentRound={gameState.currentRound}
         turnNumber={gameState.turnNumber}
@@ -1589,6 +1718,10 @@ const App = memo(function App() {
           onCardClick={handleDiscardCardClick}
           onCardDoubleClick={handleDiscardCardClick}
           onCardContextMenu={handleDiscardContextMenu}
+          onReorder={(playerId, newCards) => {
+            const source = viewingDiscard.isDeckView || viewingDiscard.pickConfig?.isDeck ? 'deck' : 'discard'
+            reorderCards(playerId, newCards, source)
+          }}
           isDeckView={viewingDiscard.isDeckView || viewingDiscard.pickConfig?.isDeck}
           playerColorMap={playerColorMap}
           localPlayerId={localPlayerId}
@@ -1605,7 +1738,6 @@ const App = memo(function App() {
         canInteract={!!localPlayerId && !isSpectator}
         anchorEl={modalAnchors.tokensModalAnchor}
         imageRefreshVersion={imageRefreshVersion}
-        draggedItem={draggedItem}
       />
 
       <CountersModal
@@ -1657,185 +1789,26 @@ const App = memo(function App() {
         </div>
       )}
 
-      {isListMode ? (
-        <div className="relative h-full w-full pt-14 overflow-hidden bg-gray-900">
-          {localPlayer && (
-            <div
-              ref={leftPanelRef}
-              className="absolute left-0 top-14 bottom-[2px] z-30 bg-panel-bg shadow-xl flex flex-col border-r border-gray-700 w-fit min-w-0 pl-[2px] py-[2px] pr-0 transition-all duration-100 overflow-hidden"
-              style={{ width: sidePanelWidth }}
-            >
-              <PlayerPanel
-                key={localPlayer.id}
-                player={localPlayer}
-                isLocalPlayer={true}
-                localPlayerId={localPlayerId}
-                isSpectator={isSpectator}
-                isGameStarted={gameState.isGameStarted}
-                position={localPlayer.id}
-                onNameChange={(name) => updatePlayerName(localPlayer.id, name)}
-                onColorChange={(color) => changePlayerColor(localPlayer.id, color)}
-                onScoreChange={(delta) => updatePlayerScore(localPlayer.id, delta)}
-                onDeckChange={(deckType) => changePlayerDeck(localPlayer.id, deckType)}
-                onLoadCustomDeck={(deckFile) => loadCustomDeck(localPlayer.id, deckFile)}
-                onDrawCard={() => drawCard(localPlayer.id)}
-                handleDrop={handleDrop}
-                draggedItem={draggedItem}
-                setDraggedItem={setDraggedItem}
-                openContextMenu={openContextMenu}
-                onHandCardDoubleClick={handleDoubleClickHandCard}
-                playerColorMap={playerColorMap}
-                allPlayers={gameState.players}
-                localPlayerTeamId={localPlayer?.teamId}
-                activeTurnPlayerId={gameState.activeTurnPlayerId}
-                onToggleActiveTurn={toggleActiveTurnPlayer}
-                imageRefreshVersion={imageRefreshVersion}
-                layoutMode="list-local"
-                onCardClick={handleHandCardClick}
-                validHandTargets={validHandTargets}
-                onAnnouncedCardDoubleClick={handleAnnouncedCardDoubleClick}
-                currentPhase={gameState.currentPhase}
-                disableActiveHighlights={isTargetingMode}
-                roundWinners={gameState.roundWinners}
-                startingPlayerId={gameState.startingPlayerId}
-                onDeckClick={handleDeckClick}
-                isDeckSelectable={abilityMode?.mode === 'SELECT_DECK'}
-              />
-            </div>
-          )}
-
+      <div className="relative h-full w-full pt-14 overflow-hidden bg-gray-900">
+        {localPlayer && (
           <div
-            className="absolute top-14 bottom-0 z-10 flex items-center justify-center pointer-events-none w-full left-0"
-          >
-            <div
-              ref={boardContainerRef}
-              className="pointer-events-auto h-full aspect-square flex items-center justify-center py-[2px]"
-            >
-              <GameBoard
-                board={gameState.board}
-                isGameStarted={gameState.isGameStarted}
-                activeGridSize={gameState.activeGridSize}
-                handleDrop={handleDrop}
-                draggedItem={draggedItem}
-                setDraggedItem={setDraggedItem}
-                openContextMenu={openContextMenu}
-                playMode={playMode}
-                setPlayMode={setPlayMode}
-                highlight={highlight}
-                playerColorMap={playerColorMap}
-                localPlayerId={localPlayerId}
-                onCardDoubleClick={handleDoubleClickBoardCard}
-                onEmptyCellDoubleClick={handleDoubleClickEmptyCell}
-                imageRefreshVersion={imageRefreshVersion}
-                cursorStack={cursorStack}
-                currentPhase={gameState.currentPhase}
-                activeTurnPlayerId={gameState.activeTurnPlayerId}
-                onCardClick={handleBoardCardClick}
-                onEmptyCellClick={handleEmptyCellClick}
-                validTargets={validTargets}
-                noTargetOverlay={noTargetOverlay}
-                disableActiveHighlights={isTargetingMode}
-                activeFloatingTexts={activeFloatingTexts}
-              />
-            </div>
-          </div>
-
-          <div
-            className="absolute right-0 top-14 bottom-[2px] z-30 bg-panel-bg shadow-xl flex flex-col border-l border-gray-700 min-w-0 pr-[2px] py-[2px] pl-0 transition-all duration-100 overflow-hidden"
+            ref={leftPanelRef}
+            className="absolute left-0 top-14 bottom-[2px] z-30 bg-panel-bg shadow-xl flex flex-col border-r border-gray-700 w-fit min-w-0 pl-[2px] py-[2px] pr-0 transition-all duration-100 overflow-hidden"
             style={{ width: sidePanelWidth }}
           >
-            <div className="flex flex-col h-full w-full gap-[2px]">
-              {gameState.players
-                .filter(p => p.id !== localPlayerId)
-                .map(player => (
-                  <div key={player.id} className="w-full flex-1 min-h-0 flex flex-col">
-                    <PlayerPanel
-                      player={player}
-                      isLocalPlayer={false}
-                      localPlayerId={localPlayerId}
-                      isSpectator={isSpectator}
-                      isGameStarted={gameState.isGameStarted}
-                      position={player.id}
-                      onNameChange={(name) => updatePlayerName(player.id, name)}
-                      onColorChange={(color) => changePlayerColor(player.id, color)}
-                      onScoreChange={(delta) => updatePlayerScore(player.id, delta)}
-                      onDeckChange={(deckType) => changePlayerDeck(player.id, deckType)}
-                      onLoadCustomDeck={(deckFile) => loadCustomDeck(player.id, deckFile)}
-                      onDrawCard={() => drawCard(player.id)}
-                      handleDrop={handleDrop}
-                      draggedItem={draggedItem}
-                      setDraggedItem={setDraggedItem}
-                      openContextMenu={openContextMenu}
-                      onHandCardDoubleClick={handleDoubleClickHandCard}
-                      playerColorMap={playerColorMap}
-                      allPlayers={gameState.players}
-                      localPlayerTeamId={localPlayer?.teamId}
-                      activeTurnPlayerId={gameState.activeTurnPlayerId}
-                      onToggleActiveTurn={toggleActiveTurnPlayer}
-                      imageRefreshVersion={imageRefreshVersion}
-                      layoutMode="list-remote"
-                      onCardClick={handleHandCardClick}
-                      currentPhase={gameState.currentPhase}
-                      validHandTargets={validHandTargets}
-                      onAnnouncedCardDoubleClick={handleAnnouncedCardDoubleClick}
-                      disableActiveHighlights={isTargetingMode}
-                      roundWinners={gameState.roundWinners}
-                      startingPlayerId={gameState.startingPlayerId}
-                      onDeckClick={handleDeckClick}
-                      isDeckSelectable={abilityMode?.mode === 'SELECT_DECK'}
-                    />
-                  </div>
-                ))}
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="relative w-full h-full pt-14 bg-gray-900 overflow-hidden">
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="h-[95%] aspect-square">
-              <GameBoard
-                board={gameState.board}
-                isGameStarted={gameState.isGameStarted}
-                activeGridSize={gameState.activeGridSize}
-                handleDrop={handleDrop}
-                draggedItem={draggedItem}
-                setDraggedItem={setDraggedItem}
-                openContextMenu={openContextMenu}
-                playMode={playMode}
-                setPlayMode={setPlayMode}
-                highlight={highlight}
-                playerColorMap={playerColorMap}
-                localPlayerId={localPlayerId}
-                onCardDoubleClick={handleDoubleClickBoardCard}
-                onEmptyCellDoubleClick={handleDoubleClickEmptyCell}
-                imageRefreshVersion={imageRefreshVersion}
-                cursorStack={cursorStack}
-                currentPhase={gameState.currentPhase}
-                activeTurnPlayerId={gameState.activeTurnPlayerId}
-                onCardClick={handleBoardCardClick}
-                onEmptyCellClick={handleEmptyCellClick}
-                validTargets={validTargets}
-                noTargetOverlay={noTargetOverlay}
-                disableActiveHighlights={isTargetingMode}
-                activeFloatingTexts={activeFloatingTexts}
-              />
-            </div>
-          </div>
-          {gameState.players.map(player => (
             <PlayerPanel
-              key={player.id}
-              player={player}
-              isLocalPlayer={player.id === localPlayerId}
+              key={localPlayer.id}
+              player={localPlayer}
+              isLocalPlayer={true}
               localPlayerId={localPlayerId}
               isSpectator={isSpectator}
               isGameStarted={gameState.isGameStarted}
-              position={player.id}
-              onNameChange={(name) => updatePlayerName(player.id, name)}
-              onColorChange={(color) => changePlayerColor(player.id, color)}
-              onScoreChange={(delta) => updatePlayerScore(player.id, delta)}
-              onDeckChange={(deckType) => changePlayerDeck(player.id, deckType)}
-              onLoadCustomDeck={(deckFile) => loadCustomDeck(player.id, deckFile)}
-              onDrawCard={() => drawCard(player.id)}
+              onNameChange={(name) => updatePlayerName(localPlayer.id, name)}
+              onColorChange={(color) => changePlayerColor(localPlayer.id, color)}
+              onScoreChange={(delta) => updatePlayerScore(localPlayer.id, delta)}
+              onDeckChange={(deckType) => changePlayerDeck(localPlayer.id, deckType)}
+              onLoadCustomDeck={(deckFile) => loadCustomDeck(localPlayer.id, deckFile)}
+              onDrawCard={() => drawCard(localPlayer.id)}
               handleDrop={handleDrop}
               draggedItem={draggedItem}
               setDraggedItem={setDraggedItem}
@@ -1844,23 +1817,112 @@ const App = memo(function App() {
               playerColorMap={playerColorMap}
               allPlayers={gameState.players}
               localPlayerTeamId={localPlayer?.teamId}
-              activeTurnPlayerId={gameState.activeTurnPlayerId}
-              onToggleActiveTurn={toggleActiveTurnPlayer}
+              activePlayerId={gameState.activePlayerId}
+              onToggleActivePlayer={toggleActivePlayer}
               imageRefreshVersion={imageRefreshVersion}
-              layoutMode="standard"
+              layoutMode="list-local"
               onCardClick={handleHandCardClick}
               validHandTargets={validHandTargets}
               onAnnouncedCardDoubleClick={handleAnnouncedCardDoubleClick}
               currentPhase={gameState.currentPhase}
               disableActiveHighlights={isTargetingMode}
+              preserveDeployAbilities={justAutoTransitioned}
               roundWinners={gameState.roundWinners}
               startingPlayerId={gameState.startingPlayerId}
               onDeckClick={handleDeckClick}
               isDeckSelectable={abilityMode?.mode === 'SELECT_DECK'}
             />
-          ))}
+          </div>
+        )}
+
+        <div
+          className="absolute top-14 bottom-0 z-10 flex items-center justify-center pointer-events-none w-full left-0"
+        >
+          <div
+            ref={boardContainerRef}
+            className="pointer-events-auto h-full aspect-square flex items-center justify-center py-[2px]"
+          >
+            <GameBoard
+              board={gameState.board}
+              isGameStarted={gameState.isGameStarted}
+              activeGridSize={gameState.activeGridSize}
+              handleDrop={handleDrop}
+              draggedItem={draggedItem}
+              setDraggedItem={setDraggedItem}
+              openContextMenu={openContextMenu}
+              playMode={playMode}
+              setPlayMode={setPlayMode}
+              highlight={highlight}
+              playerColorMap={playerColorMap}
+              localPlayerId={localPlayerId}
+              onCardDoubleClick={handleDoubleClickBoardCard}
+              onEmptyCellDoubleClick={handleDoubleClickEmptyCell}
+              imageRefreshVersion={imageRefreshVersion}
+              cursorStack={cursorStack}
+              currentPhase={gameState.currentPhase}
+              activePlayerId={gameState.activePlayerId}
+              onCardClick={handleBoardCardClick}
+              onEmptyCellClick={handleEmptyCellClick}
+              validTargets={validTargets}
+              noTargetOverlay={noTargetOverlay}
+              disableActiveHighlights={isTargetingMode}
+              preserveDeployAbilities={justAutoTransitioned}
+              activeFloatingTexts={activeFloatingTexts}
+              abilitySourceCoords={abilityMode?.sourceCoords || null}
+              abilityCheckKey={abilityCheckKey}
+            />
+          </div>
         </div>
-      )}
+
+        <div
+          className="absolute right-0 top-14 bottom-[2px] z-30 bg-panel-bg shadow-xl flex flex-col border-l border-gray-700 min-w-0 pr-[2px] py-[2px] pl-0 transition-all duration-100 overflow-hidden"
+          style={{ width: sidePanelWidth }}
+        >
+          <div className="flex flex-col h-full w-full gap-[2px]">
+            {gameState.players
+              .filter(p => p.id !== localPlayerId)
+              .map(player => (
+                <div key={player.id} className="w-full flex-1 min-h-0 flex flex-col">
+                  <PlayerPanel
+                    player={player}
+                    isLocalPlayer={false}
+                    localPlayerId={localPlayerId}
+                    isSpectator={isSpectator}
+                    isGameStarted={gameState.isGameStarted}
+                    onNameChange={(name) => updatePlayerName(player.id, name)}
+                    onColorChange={(color) => changePlayerColor(player.id, color)}
+                    onScoreChange={(delta) => updatePlayerScore(player.id, delta)}
+                    onDeckChange={(deckType) => changePlayerDeck(player.id, deckType)}
+                    onLoadCustomDeck={(deckFile) => loadCustomDeck(player.id, deckFile)}
+                    onDrawCard={() => drawCard(player.id)}
+                    handleDrop={handleDrop}
+                    draggedItem={draggedItem}
+                    setDraggedItem={setDraggedItem}
+                    openContextMenu={openContextMenu}
+                    onHandCardDoubleClick={handleDoubleClickHandCard}
+                    playerColorMap={playerColorMap}
+                    allPlayers={gameState.players}
+                    localPlayerTeamId={localPlayer?.teamId}
+                    activePlayerId={gameState.activePlayerId}
+                    onToggleActivePlayer={toggleActivePlayer}
+                    imageRefreshVersion={imageRefreshVersion}
+                    layoutMode="list-remote"
+                    onCardClick={handleHandCardClick}
+                    currentPhase={gameState.currentPhase}
+                    validHandTargets={validHandTargets}
+                    onAnnouncedCardDoubleClick={handleAnnouncedCardDoubleClick}
+                    disableActiveHighlights={isTargetingMode}
+                    preserveDeployAbilities={justAutoTransitioned}
+                    roundWinners={gameState.roundWinners}
+                    startingPlayerId={gameState.startingPlayerId}
+                    onDeckClick={handleDeckClick}
+                    isDeckSelectable={abilityMode?.mode === 'SELECT_DECK'}
+                  />
+                </div>
+              ))}
+          </div>
+        </div>
+      </div>
     </div>
   )
 })

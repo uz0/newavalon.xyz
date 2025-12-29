@@ -136,15 +136,52 @@ export function handlePlayerReady(ws, data) {
       gameState.isReadyCheckActive = false;
       gameState.isGameStarted = true;
       gameState.startingPlayerId = activePlayers[0].id;
-      gameState.activeTurnPlayerId = activePlayers[0].id;
+      gameState.activePlayerId = activePlayers[0].id;
 
-      // Deal initial cards (5 cards each)
-      gameState.players.forEach(p => {
-        if (!p.isDummy) {
-          const handCards = p.deck.splice(0, 5);
-          p.hand.push(...handCards);
+      // Draw starting hands for players with auto-draw enabled
+      // First player (active) draws 7 cards, others draw 6
+      // For dummy players: check if host (Player 1) has auto-draw enabled
+      // For real players: check their own auto-draw setting
+      const hostPlayer = gameState.players.find(p => p.id === 1)
+      const hostAutoDrawEnabled = hostPlayer?.autoDrawEnabled === true
+
+      logger.info(`Starting hand draw - host autoDrawEnabled: ${hostAutoDrawEnabled}, host exists: ${!!hostPlayer}`)
+
+      for (const player of gameState.players) {
+        logger.info(`Player ${player.id} (dummy: ${player.isDummy}): hand=${player.hand.length}, autoDrawEnabled=${player.autoDrawEnabled}`)
+
+        if (player.hand.length > 0) {
+          continue
         }
-      });
+
+        let shouldDraw = false
+        if (player.isDummy) {
+          // Dummy players draw if host has auto-draw enabled
+          shouldDraw = hostAutoDrawEnabled
+        } else {
+          // Real players draw if they have auto-draw enabled (or use their own setting)
+          // If real player doesn't have autoDrawEnabled set yet, default to true
+          shouldDraw = player.autoDrawEnabled !== false
+        }
+
+        logger.info(`Player ${player.id} shouldDraw: ${shouldDraw}`)
+
+        if (!shouldDraw) {
+          continue
+        }
+
+        const isFirstPlayer = gameState.activePlayerId === player.id
+        const cardsToDraw = isFirstPlayer ? 7 : 6
+
+        // Draw cards from deck to hand
+        for (let i = 0; i < cardsToDraw && i < player.deck.length; i++) {
+          const drawnCard = player.deck[0]
+          player.deck.splice(0, 1)
+          player.hand.push(drawnCard)
+        }
+
+        logger.info(`Auto-drew ${cardsToDraw} cards for player ${player.id} (dummy: ${player.isDummy})`);
+      }
 
       logger.info(`All players ready! Starting game ${data.gameId}`);
     }

@@ -6,6 +6,7 @@ import { RulesModal } from './RulesModal'
 import { CardDetailModal } from './CardDetailModal'
 import type { GameState, Card, Player } from '@/types'
 import { STATUS_DESCRIPTIONS } from '@/constants'
+import { APP_VERSION } from '@/version'
 
 interface MainMenuProps {
     handleCreateGame: () => void;
@@ -142,7 +143,7 @@ export const MainMenu: React.FC<MainMenuProps> = memo(({
       </div>
 
       <div className="absolute bottom-4 text-gray-500 text-xs">
-                v0.1.4 alpha
+                v{APP_VERSION}
       </div>
 
       <JoinGameModal

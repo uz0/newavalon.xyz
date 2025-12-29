@@ -7,6 +7,7 @@ import React, { useRef, useLayoutEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { Card } from '@/types'
 import { formatAbilityText } from '@/utils/textFormatters'
+import { useLanguage } from '@/contexts/LanguageContext'
 
 /**
  * Props for the Tooltip component.
@@ -80,15 +81,30 @@ interface CardTooltipContentProps {
 }
 
 export const CardTooltipContent: React.FC<CardTooltipContentProps> = ({ card, statusDescriptions, className, hideOwner = false, powerPosition = 'default' }) => {
-  // Calculate the display string for types.
-  // If there are specific types, join them.
+  const { resources, getCardTranslation } = useLanguage()
+  const abilityKeywords = resources.abilityKeywords
+  const cardTypes = resources.cardTypes
+
+  // Get localized card data if available
+  const localized = card.baseId ? getCardTranslation(card.baseId) : undefined
+  const displayName = localized?.name || card.name
+  const displayAbility = localized?.ability || card.ability
+
+  // Calculate the display string for types with translation.
+  // If there are specific types, translate and join them.
   // If no types, default to "{Deck} Card", UNLESS it's a 'counter' deck, in which case we show nothing (per user request).
   const typeString = card.types?.length
-    ? card.types.join(', ')
+    ? card.types.map(type => cardTypes[type as keyof typeof cardTypes] || type).join(', ')
     : (card.deck === 'counter' ? '' : `${card.deck} Card`)
 
   // Group statuses by type and count them
+  // Filter out readiness statuses (readyDeploy, readySetup, readyCommit) - they are invisible to players
+  const hiddenStatusTypes = ['readyDeploy', 'readySetup', 'readyCommit']
   const statusCountsByType = (card.statuses ?? []).reduce((acc, status) => {
+    // Skip readiness statuses - they should not be displayed
+    if (hiddenStatusTypes.includes(status.type)) {
+      return acc
+    }
     acc[status.type] = (acc[status.type] || 0) + 1
     return acc
   }, {} as Record<string, number>)
@@ -119,7 +135,7 @@ export const CardTooltipContent: React.FC<CardTooltipContentProps> = ({ card, st
       {/* whitespace-nowrap ensures the Title forces the container width to expand if it's very long. */}
       <div className="mb-1 pr-1 whitespace-nowrap relative">
         <div className="font-bold text-white text-lg leading-tight mb-0.5">
-          {card.name}
+          {displayName}
         </div>
         {typeString && (
           <div className="text-xs text-gray-400 font-semibold">
@@ -146,17 +162,17 @@ export const CardTooltipContent: React.FC<CardTooltipContentProps> = ({ card, st
       <div className={`flex flex-col ${!className && isLongContent ? 'w-[16rem]' : 'w-full'} whitespace-normal break-words`}>
 
         {/* Divider above Ability - Custom spacing: 1px top, 5px bottom */}
-        {card.ability && <hr className="border-gray-600 mt-[0px] mb-[2px]" />}
+        {displayAbility && <hr className="border-gray-600 mt-[0px] mb-[2px]" />}
 
         {/* Ability Text */}
-        {card.ability && (
+        {displayAbility && (
           <div className="text-sm text-gray-200 leading-snug">
-            {formatAbilityText(card.ability)}
+            {formatAbilityText(displayAbility, abilityKeywords)}
           </div>
         )}
 
         {/* Divider below Ability */}
-        {card.ability && <hr className="border-gray-600 my-[4px]" />}
+        {displayAbility && <hr className="border-gray-600 my-[4px]" />}
 
         {/* Statuses Section */}
         {hasStatuses && (

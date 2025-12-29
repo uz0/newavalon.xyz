@@ -13,7 +13,8 @@ interface CommandModalProps {
 }
 
 export const CommandModal: React.FC<CommandModalProps> = ({ isOpen, card, playerColorMap, onConfirm, onCancel }) => {
-  const { getCardTranslation, t } = useLanguage()
+  const { getCardTranslation, t, resources } = useLanguage()
+  const abilityKeywords = resources.abilityKeywords
 
   const localized = card.baseId ? getCardTranslation(card.baseId) : undefined
   const displayCard = localized ? { ...card, ...localized } : card
@@ -57,8 +58,8 @@ export const CommandModal: React.FC<CommandModalProps> = ({ isOpen, card, player
                 <div className="bg-gray-700 text-gray-400 w-6 h-6 flex-shrink-0 flex items-center justify-center rounded-full font-bold text-xs group-hover:bg-indigo-500 group-hover:text-white transition-colors mt-1">
                   {index + 1}
                 </div>
-                <div className="text-gray-200 group-hover:text-white text-base font-medium leading-snug whitespace-pre-wrap">
-                  {formatAbilityText(optionText)}
+                <div className="text-gray-200 group-hover:text-white text-base font-medium leading-snug">
+                  {formatAbilityText(optionText, abilityKeywords)}
                 </div>
               </button>
             ))}

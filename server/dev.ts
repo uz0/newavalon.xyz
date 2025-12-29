@@ -35,16 +35,17 @@ async function createDevServer() {
   // Create Vite server in middleware mode
   const vite = await createViteServer({
     configFile: path.join(__dirname, '../vite.config.ts'),
+    root: path.join(__dirname, '../client'),
     server: { middlewareMode: true },
     appType: 'spa'
   });
 
-  // Use vite's connect instance as middleware
-  app.use(vite.middlewares);
-
-  // Setup API routes after Vite middleware
+  // Setup API routes BEFORE Vite middleware so they take priority
   app.use(express.json({ limit: '10mb' }));
   setupRoutes(app);
+
+  // Use vite's connect instance as middleware (catch-all for SPA routing)
+  app.use(vite.middlewares);
 
   // Setup WebSocket handlers
   setupWebSocket(wss);

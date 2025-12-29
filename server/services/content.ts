@@ -34,9 +34,7 @@ export async function initializeContent() {
         ]
       : [
           // Development: from server/services/
-          path.join(__dirname, '../../client/content/contentDatabase.json'),
           path.join(__dirname, '../content/contentDatabase.json'),
-          path.join(process.cwd(), 'client/content/contentDatabase.json'),
           path.join(process.cwd(), 'server/content/contentDatabase.json'),
         ];
 
@@ -55,9 +53,28 @@ export async function initializeContent() {
     const rawData = fs.readFileSync(contentPath, 'utf8');
     const data = JSON.parse(rawData);
 
+    // Process ability text to convert literal \n to actual newlines
+    const processAbilityText = (text) => {
+      if (typeof text !== 'string') return text;
+      return text.replace(/\\n/g, '\n');
+    };
+
+    // Process card abilities
+    const processCardAbilities = (cards) => {
+      const processed = {};
+      for (const [id, card] of Object.entries(cards)) {
+        processed[id] = {
+          ...card,
+          ability: processAbilityText(card.ability),
+          flavorText: processAbilityText(card.flavorText),
+        };
+      }
+      return processed;
+    };
+
     // Support both key formats (cards/cardDatabase, tokens/tokenDatabase)
-    cardDatabase = data.cardDatabase || data.cards || {};
-    tokenDatabase = data.tokenDatabase || data.tokens || {};
+    cardDatabase = processCardAbilities(data.cardDatabase || data.cards || {});
+    tokenDatabase = processCardAbilities(data.tokenDatabase || data.tokens || {});
     deckFiles = data.deckFiles || [];
     countersDatabase = data.countersDatabase || data.counters || {};
 
@@ -101,8 +118,27 @@ export function getDeckFiles() {
  */
 export async function updateContent(newContent) {
   try {
-    cardDatabase = newContent.cards || {};
-    tokenDatabase = newContent.tokens || {};
+    // Process ability text to convert literal \n to actual newlines
+    const processAbilityText = (text) => {
+      if (typeof text !== 'string') return text;
+      return text.replace(/\\n/g, '\n');
+    };
+
+    // Process card abilities
+    const processCardAbilities = (cards) => {
+      const processed = {};
+      for (const [id, card] of Object.entries(cards)) {
+        processed[id] = {
+          ...card,
+          ability: processAbilityText(card.ability),
+          flavorText: processAbilityText(card.flavorText),
+        };
+      }
+      return processed;
+    };
+
+    cardDatabase = processCardAbilities(newContent.cards || {});
+    tokenDatabase = processCardAbilities(newContent.tokens || {});
     deckFiles = newContent.deckFiles || [];
     countersDatabase = newContent.counters || {};
 

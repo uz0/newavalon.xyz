@@ -6,6 +6,73 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.2.2] - 2025-12-29
+
+### Fixed
+- Fixed Faber and Lucius discard abilities validation - no longer incorrectly show "no target" when player has cards in hand
+- Fixed target validation for hand-only actions that require discarding (SELECT_HAND_FOR_DISCARD_THEN_SPAWN, LUCIUS_SETUP, SELECT_HAND_FOR_DEPLOY)
+- Fixed Zius ability - now correctly targets only cells in the same row or column as the Exploit target card
+- Fixed floating score numbers not displaying - added immediate local state update in triggerFloatingText
+- Fixed visual effect broadcasting to prevent duplicates by excluding sender from broadcast
+- Fixed token placement mode - now persists on invalid targets instead of closing; only closes on valid target placement, right-click, or clicking outside game areas
+- Fixed resurrected cards from discard (Immunis ability) - now properly initialize ready statuses so abilities can be used after returning to play
+
+### Changed
+- **Zius ability rework**: Now works like Unwavering Integrator - single-click line selection through the Exploit target card
+- Updated Zius ability description in all languages to reflect simplified mechanic
+- Auto-phase transition now applies to both Units and Command cards when played from hand during Setup phase
+- Floating score numbers display duration set to 2 seconds
+  - English: "Deploy: Exploit any card.\nSupport ⇒ Setup: Exploit any card. Gain 1 point for each of your exploits in that line."
+  - Russian: "Deploy: Exploit на любую карту.\nSupport ⇒ Setup: Exploit на любую карту. Получите 1 очко за каждый ваш Exploit в этой линии."
+  - Serbian: "Deploy: Exploit na bilo koju kartu.\nSupport ⇒ Setup: Exploit na bilo koju kartu. Dobij 1 bod za svaki tvoj Exploit u ovoj liniji."
+
+### Added
+- New ability mode: `ZIUS_LINE_SELECT` - single-click line selection anchored at target card position
+- Special case handling in `checkActionHasTargets` for hand-only actions requiring discard
+- Token ownership system: tokens from token panel are owned by active player, tokens from abilities owned by card owner
+- Any player can now control dummy player's cards/tokens when dummy is the active player
+
+
+## [0.2.1] - 2025-12-26
+
+### Fixed
+- Fixed IP Dept Agent Support ability - now targets any card in hand with Reveal token from same player
+- Fixed Setup abilities - now only work in Setup phase (phase 0), not in Main phase
+- Fixed Patrol Agent Setup ability - now properly consumes ready status when used
+- Fixed Maria "Eleftheria" Damanaki Setup ability - now only works in Setup phase
+- Fixed card movement - all card statuses (including ready statuses) are now preserved when moving cards on the board
+- Fixed Secret Informant deploy ability - decks now properly highlight when selecting a target
+- Fixed React Hooks order violation in DeckViewModal - all hooks now defined before early return
+
+### Changed
+- **Ability System Overhaul**: Replaced global ability flags with card-based ready status system (readyDeploy, readySetup, readyCommit)
+- Setup abilities now work only in Setup phase (phase 0) instead of Setup + Main phases (phases 0-1)
+- Main phase (phase 1) is now for manual actions only, no phase abilities
+- **Content Loading Refactor**: Moved content database loading from client import to server API
+- Client now fetches card/token/counter data from `/api/content/database` endpoint
+- Removed client-side `contentDatabase.json` - now served exclusively by server
+- Improved drag-and-drop: cards can now be dragged from deck/discard/top-deck views directly to board or hand
+- `allowHandTargets` added to AbilityAction type for targeting cards in hand
+
+### Added
+- Dynamic version display in main menu - version is now sourced from `client/version.ts`
+- Auto-draw feature enabled by default for all players
+- Auto-draw and auto-abilities settings persist in localStorage
+- Auto-phase transition: when playing a unit from hand in Setup phase with auto-abilities enabled, game automatically transitions to Main phase
+- Visual ready status indicators on cards showing which abilities are available
+- Deck selection highlighting (cyan glow) for abilities that target decks (Secret Informant)
+- Server-side targeting utilities (`server/utils/targeting.ts`) with validation logic
+- Toggle auto-draw handler (`handleToggleAutoDraw`) for per-player auto-draw settings
+- New locale: Serbian (Српски) with complete UI and rules translation
+- `client/version.ts` - centralized version constant
+
+### Removed
+- `client/utils/boardUtils.ts` - moved to server
+- `client/utils/commandLogic.ts` - moved to server
+- `client/utils/targeting.ts` - moved to server
+- `client/content/contentDatabase.json` - now served from server
+
+
 ## [0.2.0] - 2025-12-24
 
 ### Fixed

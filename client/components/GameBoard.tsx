@@ -21,13 +21,16 @@ interface GameBoardProps {
   imageRefreshVersion?: number;
   cursorStack: { type: string; count: number } | null;
   currentPhase?: number;
-  activeTurnPlayerId?: number;
+  activePlayerId?: number | null; // Aligned with GameState type (null when no active player)
   onCardClick?: (card: CardType, boardCoords: { row: number; col: number }) => void;
   onEmptyCellClick?: (boardCoords: { row: number; col: number }) => void;
   validTargets?: {row: number, col: number}[];
   noTargetOverlay?: {row: number, col: number} | null;
   disableActiveHighlights?: boolean;
+  preserveDeployAbilities?: boolean;
   activeFloatingTexts?: FloatingTextData[];
+  abilitySourceCoords?: { row: number, col: number } | null;
+  abilityCheckKey?: number;
 }
 
 const GridCell = memo<{
@@ -48,18 +51,22 @@ const GridCell = memo<{
   imageRefreshVersion?: number;
   cursorStack: GameBoardProps['cursorStack'];
   currentPhase?: number;
-  activeTurnPlayerId?: number;
+  activePlayerId?: number | null; // Aligned with GameState type (null when no active player)
   onCardClick?: (card: CardType, boardCoords: { row: number; col: number }) => void;
   onEmptyCellClick?: (boardCoords: { row: number; col: number }) => void;
   isValidTarget?: boolean;
   showNoTarget?: boolean;
   disableActiveHighlights?: boolean;
+  preserveDeployAbilities?: boolean;
+  abilitySourceCoords?: { row: number, col: number } | null;
+  abilityCheckKey?: number;
     }>(({
       row, col, cell, isGameStarted, handleDrop, draggedItem, setDraggedItem,
       openContextMenu, playMode, setPlayMode, playerColorMap, localPlayerId,
       onCardDoubleClick, onEmptyCellDoubleClick, imageRefreshVersion, cursorStack,
-      currentPhase, activeTurnPlayerId, onCardClick, onEmptyCellClick,
-      isValidTarget, showNoTarget, disableActiveHighlights,
+      currentPhase, activePlayerId, onCardClick, onEmptyCellClick,
+      isValidTarget, showNoTarget, disableActiveHighlights, preserveDeployAbilities,
+      abilitySourceCoords, abilityCheckKey,
     }) => {
       const [isOver, setIsOver] = useState(false)
 
@@ -146,6 +153,7 @@ const GridCell = memo<{
       const canPlay = isInPlayMode && !isOccupied
       const canStack = isStackMode && isValidTarget
       const isInteractive = isValidTarget || canPlay || canStack
+
       const targetClasses = isInteractive ? 'ring-4 ring-cyan-400 shadow-[0_0_15px_#22d3ee] cursor-pointer z-10' : ''
       const cellClasses = `bg-board-cell-active ${isOver && canDrop ? 'bg-indigo-400 opacity-80' : ''} ${isInPlayMode && isOccupied ? 'cursor-not-allowed' : ''} ${targetClasses}`
 
@@ -181,9 +189,9 @@ const GridCell = memo<{
           {showNoTarget && (
             <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none">
               <img
-                src="https://res.cloudinary.com/dxxh6meej/image/upload/v1763978163/no_target_mic5sm.png"
+                src="https://res.cloudinary.com/dxxh6meej/image/upload/v1763978163/no_tarket_mic5sm.png"
                 alt="No Target"
-                className="w-16 h-16 object-contain animate-fade-out drop-shadow-[0_0_5px_rgba(255,0,0,0.8)]"
+                className="w-24 h-24 object-contain animate-fade-out drop-shadow-[0_0_5px_rgba(255,0,0,0.8)]"
               />
             </div>
           )}
@@ -206,8 +214,12 @@ const GridCell = memo<{
                 localPlayerId={localPlayerId}
                 imageRefreshVersion={imageRefreshVersion}
                 activePhaseIndex={currentPhase}
-                activeTurnPlayerId={activeTurnPlayerId}
+                activePlayerId={activePlayerId}
                 disableActiveHighlights={disableActiveHighlights}
+                preserveDeployAbilities={preserveDeployAbilities}
+                activeAbilitySourceCoords={abilitySourceCoords}
+                boardCoords={{ row: row, col: col }}
+                abilityCheckKey={abilityCheckKey}
               />
             </div>
           )}
@@ -259,13 +271,16 @@ export const GameBoard = memo<GameBoardProps>(({
   imageRefreshVersion,
   cursorStack,
   currentPhase,
-  activeTurnPlayerId,
+  activePlayerId,
   onCardClick,
   onEmptyCellClick,
   validTargets,
   noTargetOverlay,
   disableActiveHighlights,
+  preserveDeployAbilities = false,
   activeFloatingTexts,
+  abilitySourceCoords = null,
+  abilityCheckKey,
 }) => {
   const activeBoard = useMemo(() => {
     const totalSize = board.length
@@ -379,12 +394,15 @@ export const GameBoard = memo<GameBoardProps>(({
                 imageRefreshVersion={imageRefreshVersion}
                 cursorStack={cursorStack}
                 currentPhase={currentPhase}
-                activeTurnPlayerId={activeTurnPlayerId}
+                activePlayerId={activePlayerId}
                 onCardClick={onCardClick}
                 onEmptyCellClick={onEmptyCellClick}
                 isValidTarget={isValidTarget}
                 showNoTarget={isNoTarget}
                 disableActiveHighlights={disableActiveHighlights}
+                preserveDeployAbilities={preserveDeployAbilities}
+                abilitySourceCoords={abilitySourceCoords}
+                abilityCheckKey={abilityCheckKey}
               />
               {cellFloatingTexts.map(ft => (
                 <FloatingTextOverlay

@@ -129,6 +129,7 @@ export function createNewPlayer(id: number, isDummy = false): any {
     playerToken: generatePlayerToken(),
     isReady: false,
     boardHistory: [],
+    autoDrawEnabled: true, // Auto-draw is enabled by default for all players
   };
 
   // Create the actual deck with cards

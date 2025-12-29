@@ -22,7 +22,8 @@ interface CardDetailModalProps {
  * @returns {React.ReactElement} The rendered modal.
  */
 export const CardDetailModal: React.FC<CardDetailModalProps> = ({ card, ownerPlayer, onClose, statusDescriptions, allPlayers, imageRefreshVersion }) => {
-  const { getCardTranslation, getCounterTranslation } = useLanguage()
+  const { getCardTranslation, getCounterTranslation, resources } = useLanguage()
+  const abilityKeywords = resources.abilityKeywords
   const [currentImageSrc, setCurrentImageSrc] = useState(card.imageUrl)
 
   const localized = card.baseId ? getCardTranslation(card.baseId) : undefined
@@ -51,7 +52,7 @@ export const CardDetailModal: React.FC<CardDetailModalProps> = ({ card, ownerPla
 
   const ownerColorName = ownerPlayer?.color
   const themeColor = ownerColorName
-    ? PLAYER_COLORS[ownerColorName].border
+    ? PLAYER_COLORS[ownerColorName]?.border || DECK_THEMES[card.deck as keyof typeof DECK_THEMES]?.color || 'border-gray-300'
     : DECK_THEMES[card.deck as keyof typeof DECK_THEMES]?.color || 'border-gray-300'
 
   const teamName = useMemo(() => {
@@ -62,8 +63,14 @@ export const CardDetailModal: React.FC<CardDetailModalProps> = ({ card, ownerPla
   }, [ownerPlayer])
 
   // Aggregate statuses by type
+  // Filter out readiness statuses (readyDeploy, readySetup, readyCommit) - they are invisible to players
+  const hiddenStatusTypes = ['readyDeploy', 'readySetup', 'readyCommit']
   const statusGroups: Record<string, number[]> = (card.statuses ?? []).reduce(
     (acc, status) => {
+      // Skip readiness statuses - they should not be displayed
+      if (hiddenStatusTypes.includes(status.type)) {
+        return acc
+      }
       if (!acc[status.type]) {
         acc[status.type] = []
       }
@@ -95,7 +102,7 @@ export const CardDetailModal: React.FC<CardDetailModalProps> = ({ card, ownerPla
           {/* Core Stats */}
           <div className="bg-gray-900 p-4 rounded-lg">
             <p><strong className="text-indigo-400 text-lg">Power:</strong> <span className="text-xl font-bold">{displayCard.power}</span></p>
-            <p className="mt-2"><strong className="text-indigo-400 text-lg">Ability:</strong> <span className="text-gray-200 text-base">{formatAbilityText(displayCard.ability)}</span></p>
+            <p className="mt-2"><strong className="text-indigo-400 text-lg">Ability:</strong> <span className="text-gray-200 text-base">{formatAbilityText(displayCard.ability, abilityKeywords)}</span></p>
           </div>
 
           {/* Owner Info */}

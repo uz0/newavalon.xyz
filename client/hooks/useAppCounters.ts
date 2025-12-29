@@ -1,12 +1,12 @@
 import React, { useRef, useEffect, useLayoutEffect } from 'react'
 import type { CursorStackState, GameState, AbilityAction, DragItem, DropTarget, CommandContext } from '@/types'
-import { validateTarget } from '@/utils/targeting'
+import { validateTarget } from '@server/utils/targeting'
 
 interface UseAppCountersProps {
     gameState: GameState;
     localPlayerId: number | null;
     handleDrop: (item: DragItem, target: DropTarget) => void;
-    markAbilityUsed: (coords: { row: number, col: number }, isDeployAbility?: boolean) => void;
+    markAbilityUsed: (coords: { row: number, col: number }, isDeployAbility?: boolean, setDeployAttempted?: boolean) => void;
     setAbilityMode: (mode: AbilityAction | null) => void;
     requestCardReveal: (data: any, playerId: number) => void;
     interactionLock: React.MutableRefObject<boolean>;
@@ -81,8 +81,8 @@ export const useAppCounters = ({
             effectiveActorId = sourceCard.ownerId || localPlayerId
           }
         }
-      } else if (gameState.activeTurnPlayerId) {
-        const activePlayer = gameState.players.find(p => p.id === gameState.activeTurnPlayerId)
+      } else if (gameState.activePlayerId) {
+        const activePlayer = gameState.players.find(p => p.id === gameState.activePlayerId)
         if (activePlayer?.isDummy) {
           effectiveActorId = activePlayer.id
         }
@@ -117,7 +117,8 @@ export const useAppCounters = ({
             )
 
             if (!isValid) {
-              setCursorStack(null)
+              // Invalid target - keep cursor stack active to allow retry
+              // Don't close selection mode on invalid target
               return
             }
 
@@ -188,7 +189,8 @@ export const useAppCounters = ({
               gameState.players,
             )
             if (!isValid) {
-              setCursorStack(null)
+              // Invalid target - keep cursor stack active to allow retry
+              // Don't close selection mode on invalid target
               return
             }
 
@@ -275,14 +277,22 @@ export const useAppCounters = ({
         } // End of bounds check
       } else {
         const isOverModal = target?.closest('.counter-modal-content')
+        const isOverGameBoard = target?.closest('[data-board-coords]') !== null
+        const isOverHandCard = target?.closest('[data-hand-card]') !== null
+
         if (cursorStack.isDragging) {
           if (isOverModal) {
             setCursorStack(prev => prev ? { ...prev, isDragging: false } : null)
           } else {
-            setCursorStack(null)
+            // Only close if not clicking on game board or hand cards
+            // This allows retrying token placement on valid targets
+            if (!isOverGameBoard && !isOverHandCard) {
+              setCursorStack(null)
+            }
           }
         } else {
-          if (!isOverModal) {
+          // Only close if clicking outside modal and outside game areas
+          if (!isOverModal && !isOverGameBoard && !isOverHandCard) {
             setCursorStack(null)
           }
         }
@@ -293,6 +303,22 @@ export const useAppCounters = ({
       window.removeEventListener('mouseup', handleGlobalMouseUp)
     }
   }, [cursorStack, handleDrop, gameState, localPlayerId, requestCardReveal, markAbilityUsed, setAbilityMode, interactionLock, setCommandContext, onAction, setCursorStack])
+
+  // Handle right-click to cancel token placement mode
+  useEffect(() => {
+    const handleGlobalContextMenu = (e: MouseEvent) => {
+      if (!cursorStack) {
+        return
+      }
+      // Right-click cancels token placement mode
+      e.preventDefault()
+      setCursorStack(null)
+    }
+    window.addEventListener('contextmenu', handleGlobalContextMenu)
+    return () => {
+      window.removeEventListener('contextmenu', handleGlobalContextMenu)
+    }
+  }, [cursorStack, setCursorStack])
 
   const handleCounterMouseDown = (type: string, e: React.MouseEvent) => {
     mousePos.current = { x: e.clientX, y: e.clientY }

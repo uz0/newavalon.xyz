@@ -1,9 +1,10 @@
 
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import type { Card as CardType } from '@/types'
-import { AVAILABLE_COUNTERS, STATUS_ICONS, STATUS_DESCRIPTIONS } from '@/constants'
+import { getAvailableCounters, STATUS_ICONS, STATUS_DESCRIPTIONS } from '@/constants'
 import { Tooltip, CardTooltipContent } from './Tooltip'
 import { useLanguage } from '@/contexts/LanguageContext'
+import { getCardDatabaseMap } from '@/content'
 
 const COUNTER_BG_URL = 'https://res.cloudinary.com/dxxh6meej/image/upload/v1763653192/background_counter_socvss.png'
 
@@ -18,9 +19,13 @@ interface CountersModalProps {
 }
 
 export const CountersModal: React.FC<CountersModalProps> = ({ isOpen, onClose, canInteract, anchorEl, imageRefreshVersion, onCounterMouseDown, cursorStack }) => {
-  const { getCounterTranslation } = useLanguage()
+  const { getCounterTranslation, t } = useLanguage()
   const [tooltipCard, setTooltipCard] = useState<CardType | null>(null)
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 })
+
+  // Get available counters dynamically - will update when data is loaded from server
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const availableCounters = useMemo(() => getAvailableCounters(), [getCardDatabaseMap().size])
 
   if (!isOpen || !anchorEl) {
     return null
@@ -107,16 +112,16 @@ export const CountersModal: React.FC<CountersModalProps> = ({ isOpen, onClose, c
         <div className="bg-gray-800 rounded-lg p-4 shadow-xl w-80 max-w-[90vw] h-auto flex flex-col" onClick={e => e.stopPropagation()}>
           <div className="mb-2">
             <div className="flex justify-between items-center">
-              <h2 className="text-xl font-bold">Counters</h2>
+              <h2 className="text-xl font-bold">{t('counters')}</h2>
               <button onClick={onClose} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-1 px-3 rounded text-sm">
-                    Close
+                    {t('close')}
               </button>
             </div>
-            <p className="text-xs text-gray-400 mt-1">Hold right click to view hints</p>
+            <p className="text-xs text-gray-400 mt-1">{t('holdRightClickViewHints')}</p>
           </div>
           <div className="bg-gray-900 rounded p-4">
             <div className="grid grid-cols-4 gap-1">
-              {AVAILABLE_COUNTERS.map((counter) => {
+              {availableCounters.map((counter) => {
                 const iconUrl = getIcon(counter.type)
                 const isPower = counter.type.startsWith('Power')
 

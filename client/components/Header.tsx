@@ -33,6 +33,8 @@ interface HeaderProps {
   onSetPhase: (index: number) => void;
   isAutoAbilitiesEnabled: boolean;
   onToggleAutoAbilities: (enabled: boolean) => void;
+  isAutoDrawEnabled: boolean;
+  onToggleAutoDraw: (enabled: boolean) => void;
   isScoringStep?: boolean; // New prop
   currentRound?: number;
   turnNumber?: number;
@@ -63,36 +65,35 @@ StatusIndicator.displayName = 'StatusIndicator'
 const RoundTracker = memo<{
   currentRound: number;
   turnNumber: number;
-  onMouseEnter: (e: React.MouseEvent) => void;
+  onMouseEnter: () => void;
   onMouseLeave: () => void;
   showTooltip: boolean;
-  tooltipPos: { x: number; y: number };
   t: (key: keyof TranslationResource['ui']) => string;
-    }>(({ currentRound, turnNumber, onMouseEnter, onMouseLeave, showTooltip, tooltipPos, t }) => {
+    }>(({ currentRound, turnNumber, onMouseEnter, onMouseLeave, showTooltip, t }) => {
       const threshold = useMemo(() => (currentRound * 10) + 10, [currentRound])
 
       return (
-        <>
+        <div className="relative">
           <div
             className="flex items-center bg-gray-800 rounded-lg px-3 py-1.5 border border-gray-700 shadow-md cursor-help"
             onMouseEnter={onMouseEnter}
             onMouseLeave={onMouseLeave}
           >
-            <span className="text-yellow-500 font-bold text-sm tracking-wider">ROUND {currentRound}</span>
+            <span className="text-yellow-500 font-bold text-sm tracking-wider">{t('round').toUpperCase()} {currentRound}</span>
             <span className="text-gray-500 mx-2">|</span>
-            <span className="text-gray-300 text-xs font-mono">TURN {turnNumber}</span>
+            <span className="text-gray-300 text-xs font-mono">{t('turn').toUpperCase()} {turnNumber}</span>
           </div>
 
           {showTooltip && (
-            <div className="fixed z-[100] bg-gray-900 text-white p-3 rounded-lg shadow-xl border border-gray-700 text-sm" style={{ left: tooltipPos.x, top: tooltipPos.y }}>
+            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 z-[100] bg-gray-900 text-white p-3 rounded-lg shadow-xl border border-gray-700 text-sm whitespace-nowrap min-w-max">
               <div className="text-center">
-                <p className="font-bold text-yellow-400 mb-1">Round {currentRound} Victory Condition</p>
-                <p>Reach <span className="font-bold text-white">{threshold} {t('scorePoints')}</span> {t('toWinRound')}</p>
+                <p className="font-bold text-yellow-400 mb-1 whitespace-nowrap">{t('round')} {currentRound} {t('roundVictoryCondition')}</p>
+                <p className="whitespace-nowrap">{t('reach')} <span className="font-bold text-white">{threshold} {t('scorePoints')}</span> {t('toWinRound')}</p>
                 <p className="text-xs text-gray-400 mt-1">{t('checkedAtFirstPlayer')}</p>
               </div>
             </div>
           )}
-        </>
+        </div>
       )
     })
 
@@ -123,6 +124,8 @@ const Header = memo<HeaderProps>(({
   onPrevPhase,
   isAutoAbilitiesEnabled,
   onToggleAutoAbilities,
+  isAutoDrawEnabled,
+  onToggleAutoDraw,
   isScoringStep,
   currentRound = 1,
   turnNumber = 1,
@@ -130,10 +133,8 @@ const Header = memo<HeaderProps>(({
   const { t } = useLanguage()
   const dummyOptions = useMemo(() => [0, 1, 2, 3], [])
   const [showRoundTooltip, setShowRoundTooltip] = useState(false)
-  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 })
 
-  const handleRoundMouseEnter = useCallback((e: React.MouseEvent) => {
-    setTooltipPos({ x: e.clientX, y: e.clientY + 20 })
+  const handleRoundMouseEnter = useCallback(() => {
     setShowRoundTooltip(true)
   }, [])
 
@@ -187,7 +188,6 @@ const Header = memo<HeaderProps>(({
             onMouseEnter={handleRoundMouseEnter}
             onMouseLeave={handleRoundMouseLeave}
             showTooltip={showRoundTooltip}
-            tooltipPos={tooltipPos}
             t={t}
           />
 
@@ -219,15 +219,34 @@ const Header = memo<HeaderProps>(({
 
       <div className="flex items-center space-x-3">
         {isGameStarted && (
-          <label className="flex items-center space-x-1.5 cursor-pointer bg-gray-800 px-2 py-1 rounded border border-gray-600">
-            <input
-              type="checkbox"
-              checked={isAutoAbilitiesEnabled}
-              onChange={(e) => onToggleAutoAbilities(e.target.checked)}
-              className="w-4 h-4 text-indigo-600 bg-gray-700 border-gray-600 rounded focus:ring-indigo-500"
-            />
-            <span className="text-sm text-gray-300">{t('autoAbility')}</span>
-          </label>
+          <div className="flex items-center space-x-2">
+            {/* Auto-Abilities (AA) button */}
+            <button
+              onClick={() => onToggleAutoAbilities(!isAutoAbilitiesEnabled)}
+              className={`w-10 h-10 font-bold rounded text-sm flex items-center justify-center transition-colors ${
+                isAutoAbilitiesEnabled
+                  ? 'bg-gray-600 hover:bg-gray-700 text-white border-2 border-green-500'
+                  : 'bg-gray-700 hover:bg-gray-600 text-gray-400 border-2 border-gray-600'
+              }`}
+              title={t('autoAbilitiesTooltip')}
+              aria-label={t('autoAbility')}
+            >
+              AA
+            </button>
+            {/* Auto-Draw (AD) button */}
+            <button
+              onClick={() => onToggleAutoDraw(!isAutoDrawEnabled)}
+              className={`w-10 h-10 font-bold rounded text-sm flex items-center justify-center transition-colors ${
+                isAutoDrawEnabled
+                  ? 'bg-gray-600 hover:bg-gray-700 text-white border-2 border-green-500'
+                  : 'bg-gray-700 hover:bg-gray-600 text-gray-400 border-2 border-gray-600'
+              }`}
+              title={t('autoDrawTooltip')}
+              aria-label={t('autoDraw')}
+            >
+              AD
+            </button>
+          </div>
         )}
 
         {isGameStarted ? (

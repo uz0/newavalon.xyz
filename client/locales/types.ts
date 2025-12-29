@@ -11,7 +11,40 @@ export interface CounterTranslation {
   description: string;
 }
 
+export interface AbilityKeywordTranslations {
+  deploy: string;
+  setup: string;
+  commit: string;
+  support: string;
+  threat: string;
+  pass: string;
+  aim: string;
+  exploit: string;
+  stun: string;
+  shield: string;
+  gain: string;
+  point: string;
+  points: string;
+  reveal: string;
+  move: string;
+  draw: string;
+  push: string;
+  sacrifice: string;
+  discard: string;
+}
+
 export interface TranslationResource {
+  abilityKeywords: AbilityKeywordTranslations;
+  cardTypes: {
+    unit: string;
+    command: string;
+    hero: string;
+    rarity: string;
+    structure: string;
+    gear: string;
+    event: string;
+    attachment: string;
+  };
   ui: {
     startGame: string;
     joinGame: string;
@@ -28,6 +61,7 @@ export interface TranslationResource {
     phase: string;
     scoring: string;
     autoAbility: string;
+    autoDraw: string;
     newGame: string;
     exit: string;
     surrender: string;
@@ -68,12 +102,14 @@ export interface TranslationResource {
     disconnected: string;
     hiddenGameTooltip: string;
     gameOver: string;
+    roundComplete: string;
     winner: string;
     roundWinner: string;
     move: string;
     moveToBottom: string;
     selectCard: string;
     deckView: string;
+    topDeckView: string;
     discardView: string;
     selectFromDeck: string;
     selectFromDiscard: string;
@@ -125,6 +161,8 @@ export interface TranslationResource {
     scorePoints: string;
     toWinRound: string;
     checkedAtFirstPlayer: string;
+    roundVictoryCondition: string;
+    reach: string;
     ffa: string;
     team2v2: string;
     team3v1: string;
@@ -145,7 +183,7 @@ export interface TranslationResource {
     puzzles: string;
     changeColor: string;
     firstPlayer: string;
-    activeTurn: string;
+    activePlayer: string;
     clearSearch: string;
     resetPowerFilter: string;
     clearTypes: string;
@@ -165,8 +203,28 @@ export interface TranslationResource {
     noTarget: string;
     confirmClearDeck: string;
     languageDisabled: string;
-    listModeTitle: string;
-    listModeDescription: string;
+    autoAbilitiesTooltip: string;
+    autoDrawTooltip: string;
+    endedOnTurn: string;
+    nextRound: string;
+    victoryCondition: string;
+    win2RoundsMatch: string;
+    max5RoundsInfo: string;
+    matchComplete: string;
+    thankYouPlaying: string;
+    returnToMenu: string;
+    continueGame: string;
+    startRound: string;
+    youLabel: string;
+    readyToStart: string;
+    gameWillBegin: string;
+    dragCardsReorder: string;
+    dragOutsideAnotherZone: string;
+    ready: string;
+    dragOutsideToMove: string;
+    empty: string;
+    dragOutsideToPlaceToken: string;
+    holdRightClickViewHints: string;
   };
   rules: {
     title: string;
@@ -193,4 +251,10 @@ export interface TranslationResource {
   };
   cards: Record<string, CardTranslation>;
   counters: Record<string, CounterTranslation>;
+  deckNames: {
+    SynchroTech: string;
+    Hoods: string;
+    Optimates: string;
+    Fusion: string;
+  };
 }

@@ -84,6 +84,7 @@ export interface Card {
   enteredThisTurn?: boolean; // True if the card entered the battlefield during the current turn
   abilityUsedInPhase?: number; // Stores the phase index where the ability was last used
   deployAbilityConsumed?: boolean; // True if the card's Deploy ability has already been used while on the board
+  deployAttempted?: boolean; // True if Deploy was attempted but had no targets (allows skipping to phase abilities)
 }
 
 /**
@@ -105,6 +106,7 @@ export interface Player {
   isReady?: boolean; // For the pre-game ready check.
   teamId?: number; // The team this player belongs to.
   boardHistory: string[]; // Stack of card IDs currently on the board, used to track 'LastPlayed' status fallback.
+  autoDrawEnabled?: boolean; // Whether this player has auto-draw enabled.
 }
 
 /**
@@ -180,10 +182,15 @@ export interface GameState {
   isPrivate: boolean;
   isReadyCheckActive: boolean;
   revealRequests: RevealRequest[];
-  activeTurnPlayerId?: number;
-  startingPlayerId?: number; // The ID of the player who started the game (Turn 1 Player 1)
+  activePlayerId: number | null; // Aligned with server and client: null when no active player
+  startingPlayerId: number | null; // The ID of the player who started the game (Turn 1 Player 1)
   currentPhase: number; // 0 to 4 representing the index in TURN_PHASES
   isScoringStep: boolean; // True when waiting for the active player to score a line after Commit phase
+
+  // Auto-abilities settings
+  autoAbilitiesEnabled: boolean; // If true, auto-activate card abilities
+  autoDrawEnabled: boolean; // If true, auto-draw at start of Setup phase
+  preserveDeployAbilities: boolean; // If true, deploy abilities remain available after auto-transition to Main
 
   // Round Logic
   currentRound: number; // 1, 2, or 3
@@ -307,7 +314,7 @@ export interface CounterSelectionData {
  * Represents a structured action for the auto-ability system.
  */
 export type AbilityAction = {
-    type: 'CREATE_STACK' | 'ENTER_MODE' | 'OPEN_MODAL' | 'GLOBAL_AUTO_APPLY';
+    type: 'CREATE_STACK' | 'ENTER_MODE' | 'OPEN_MODAL' | 'GLOBAL_AUTO_APPLY' | 'ABILITY_COMPLETE';
     mode?: string;
     tokenType?: string;
     count?: number;
@@ -329,4 +336,6 @@ export type AbilityAction = {
     mustBeInLineWithSource?: boolean;
     placeAllAtOnce?: boolean;
     chainedAction?: AbilityAction;
+    readyStatusToRemove?: string; // The ready status to remove when this action is executed/cancelled/has no targets
+    allowHandTargets?: boolean; // If true, allows targeting cards in player's hand
 };

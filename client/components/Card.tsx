@@ -1,9 +1,9 @@
 import React, { memo, useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { DeckType } from '@/types'
 import type { Card as CardType, PlayerColor } from '@/types'
-import { DECK_THEMES, PLAYER_COLORS, STATUS_ICONS } from '@/constants'
+import { DECK_THEMES, PLAYER_COLORS, STATUS_ICONS, PLAYER_COLOR_RGB } from '@/constants'
 import { Tooltip, CardTooltipContent } from './Tooltip'
-import { canActivateAbility } from '@/utils/autoAbilities'
+import { hasReadyAbilityInCurrentPhase } from '@/utils/autoAbilities'
 import { useLanguage } from '@/contexts/LanguageContext'
 
 
@@ -22,9 +22,79 @@ interface CardInteractionProps {
   localPlayerId?: number | null;
   disableTooltip?: boolean;
   activePhaseIndex?: number;
-  activeTurnPlayerId?: number;
+  activePlayerId?: number | null; // Aligned with GameState type (null when no active player)
   disableActiveHighlights?: boolean;
+  preserveDeployAbilities?: boolean;
+  activeAbilitySourceCoords?: { row: number, col: number } | null; // Source of currently active ability
+  boardCoords?: { row: number, col: number } | null; // This card's position on board
+  abilityCheckKey?: number; // Incremented to recheck ability readiness after ability completion
 }
+
+// Extracted outside CardCore to preserve React.memo optimization
+interface StatusIconProps {
+  type: string;
+  playerId: number;
+  count: number;
+  refreshVersion?: number;
+  playerColorMap: Map<number, PlayerColor>;
+  smallStatusIcons?: boolean;
+}
+
+const StatusIcon: React.FC<StatusIconProps> = memo(({ type, playerId, count, refreshVersion, playerColorMap, smallStatusIcons = false }) => {
+  const statusColorName = playerColorMap.get(playerId)
+  const statusBg = (statusColorName && PLAYER_COLORS[statusColorName]) ? PLAYER_COLORS[statusColorName].bg : 'bg-gray-500'
+
+  const iconUrl = useMemo(() => {
+    let url = STATUS_ICONS[type]
+    if (url) {
+      const separator = url.includes('?') ? '&' : '?'
+      url = `${url}${separator}v=${refreshVersion}`
+    }
+    return url
+  }, [type, refreshVersion])
+
+  const isSingleInstance = ['Support', 'Threat', 'Revealed', 'LastPlayed'].includes(type)
+  const showCount = !isSingleInstance && count > 1
+
+  // When count is shown, icon padding is larger to make the icon smaller.
+  const iconPaddingClass = showCount ? 'p-1.5' : 'p-1'
+
+  // Size logic: w-8 (32px) is default. w-6 (24px) is 75%, which is 25% smaller.
+  const sizeClass = smallStatusIcons ? 'w-6 h-6' : 'w-8 h-8'
+  const fontSizeClass = smallStatusIcons
+    ? (showCount ? 'text-xs' : 'text-base')
+    : (showCount ? 'text-base' : 'text-lg')
+
+  const countBadgeSize = smallStatusIcons ? 'text-[10px]' : 'text-xs'
+
+  return (
+    <div
+      className={`relative ${sizeClass} flex items-center justify-center ${statusBg} bg-opacity-80 rounded-sm shadow-md flex-shrink-0`}
+      title={`${type} (Player ${playerId}) ${!isSingleInstance && count > 0 ? `x${count}` : ''}`}
+    >
+      {iconUrl ? (
+        <img
+          src={iconUrl}
+          alt={type}
+          className={`object-contain w-full h-full transition-all duration-150 ${iconPaddingClass}`}
+        />
+      ) : (
+        <span className={`text-white font-black transition-all duration-150 ${fontSizeClass}`} style={{ textShadow: '0 0 2px black' }}>
+          {type.charAt(0)}
+        </span>
+      )}
+
+      {showCount && (
+        <span
+          className={`absolute top-0 right-0.5 text-white font-bold ${countBadgeSize} leading-none`}
+          style={{ textShadow: '1px 1px 2px black' }}
+        >
+          {count}
+        </span>
+      )}
+    </div>
+  )
+})
 
 const CardCore: React.FC<CardCoreProps & CardInteractionProps> = memo(({
   card,
@@ -35,10 +105,14 @@ const CardCore: React.FC<CardCoreProps & CardInteractionProps> = memo(({
   disableTooltip = false,
   smallStatusIcons = false,
   activePhaseIndex,
-  activeTurnPlayerId,
+  activePlayerId, // Used for ability highlighting and arePropsEqual comparison
   disableActiveHighlights = false,
   extraPowerSpacing = false,
   hidePower = false,
+  preserveDeployAbilities: _preserveDeployAbilities = false, // Used in arePropsEqual comparison
+  activeAbilitySourceCoords = null,
+  boardCoords = null,
+  abilityCheckKey,
 }) => {
   const { getCardTranslation } = useLanguage()
   const [tooltipVisible, setTooltipVisible] = useState(false)
@@ -53,7 +127,7 @@ const CardCore: React.FC<CardCoreProps & CardInteractionProps> = memo(({
 
   useEffect(() => {
     setHighlightDismissed(false)
-  }, [activePhaseIndex])
+  }, [activePhaseIndex, abilityCheckKey])
 
   useEffect(() => {
     if (!disableActiveHighlights) {
@@ -172,11 +246,25 @@ const CardCore: React.FC<CardCoreProps & CardInteractionProps> = memo(({
     setTooltipVisible(false)
   }, [])
 
-  const canActivate = (activePhaseIndex !== undefined && activeTurnPlayerId !== undefined)
-    ? canActivateAbility(card, activePhaseIndex, activeTurnPlayerId)
-    : false
+  // Check if card should show ready ability highlighting based on:
+  // 1. Card's owner is the active player
+  // 2. Card has a ready status that matches the current phase
+  const hasReadyAbility = hasReadyAbilityInCurrentPhase(
+    card,
+    activePhaseIndex ?? 0,
+    activePlayerId
+  )
 
-  const shouldHighlight = !disableActiveHighlights && !highlightDismissed && canActivate
+  // Check if this card is currently executing an ability
+  const isExecutingAbility = boardCoords && activeAbilitySourceCoords &&
+    boardCoords.row === activeAbilitySourceCoords.row &&
+    boardCoords.col === activeAbilitySourceCoords.col
+
+  // Highlight if:
+  // 1. Has a ready ability usable in current phase and by active player
+  // 2. NOT currently executing an ability
+  // 3. Not dismissed and not disabled
+  const shouldHighlight = !disableActiveHighlights && !highlightDismissed && hasReadyAbility && !isExecutingAbility
 
   const handleCardClick = useCallback(() => {
     if (shouldHighlight && localPlayerId === card.ownerId) {
@@ -185,8 +273,16 @@ const CardCore: React.FC<CardCoreProps & CardInteractionProps> = memo(({
   }, [shouldHighlight, localPlayerId, card.ownerId])
 
   // Aggregate statuses by TYPE and PLAYER ID to allow separate icons for different players.
+  // Filter out readiness statuses (readyDeploy, readySetup, readyCommit) - they are invisible to players
+  // DEV NOTE: ready* statuses are internal-only and intentionally hidden from the UI.
+  // They control ability availability and are managed by the auto-abilities system.
   const statusGroups = useMemo(() => {
+    const hiddenStatusTypes = ['readyDeploy', 'readySetup', 'readyCommit']
     return (card.statuses ?? []).reduce((acc, status) => {
+      // Skip readiness statuses - they should not be displayed
+      if (hiddenStatusTypes.includes(status.type)) {
+        return acc
+      }
       const key = `${status.type}_${status.addedByPlayerId}`
       if (!acc[key]) {
         acc[key] = { type: status.type, playerId: status.addedByPlayerId, count: 0 }
@@ -195,63 +291,6 @@ const CardCore: React.FC<CardCoreProps & CardInteractionProps> = memo(({
       return acc
     }, {} as Record<string, { type: string, playerId: number, count: number }>)
   }, [card.statuses])
-
-  // Status icon sub-component for reusability
-  const StatusIcon = memo(({ type, playerId, count }: { type: string, playerId: number, count: number }) => {
-    const statusColorName = playerColorMap.get(playerId)
-    const statusBg = (statusColorName && PLAYER_COLORS[statusColorName]) ? PLAYER_COLORS[statusColorName].bg : 'bg-gray-500'
-
-    const iconUrl = useMemo(() => {
-      let url = STATUS_ICONS[type]
-      if (url) {
-        const separator = url.includes('?') ? '&' : '?'
-        url = `${url}${separator}v=${imageRefreshVersion}`
-      }
-      return url
-    }, [type])
-
-    const isSingleInstance = ['Support', 'Threat', 'Revealed', 'LastPlayed'].includes(type)
-    const showCount = !isSingleInstance && count > 1
-
-    // When count is shown, icon padding is larger to make the icon smaller.
-    const iconPaddingClass = showCount ? 'p-1.5' : 'p-1'
-
-    // Size logic: w-8 (32px) is default. w-6 (24px) is 75%, which is 25% smaller.
-    const sizeClass = smallStatusIcons ? 'w-6 h-6' : 'w-8 h-8'
-    const fontSizeClass = smallStatusIcons
-      ? (showCount ? 'text-xs' : 'text-base')
-      : (showCount ? 'text-base' : 'text-lg')
-
-    const countBadgeSize = smallStatusIcons ? 'text-[10px]' : 'text-xs'
-
-    return (
-      <div
-        className={`relative ${sizeClass} flex items-center justify-center ${statusBg} bg-opacity-80 rounded-sm shadow-md flex-shrink-0`}
-        title={`${type} (Player ${playerId}) ${!isSingleInstance && count > 0 ? `x${count}` : ''}`}
-      >
-        {iconUrl ? (
-          <img
-            src={iconUrl}
-            alt={type}
-            className={`object-contain w-full h-full transition-all duration-150 ${iconPaddingClass}`}
-          />
-        ) : (
-          <span className={`text-white font-black transition-all duration-150 ${fontSizeClass}`} style={{ textShadow: '0 0 2px black' }}>
-            {type.charAt(0)}
-          </span>
-        )}
-
-        {showCount && (
-          <span
-            className={`absolute top-0 right-0.5 text-white font-bold ${countBadgeSize} leading-none`}
-            style={{ textShadow: '1px 1px 2px black' }}
-          >
-            {count}
-          </span>
-        )}
-      </div>
-    )
-  })
 
   // Memoized values (must be called before any conditional returns)
   const ownerColorData = useMemo(() => {
@@ -314,11 +353,11 @@ const CardCore: React.FC<CardCoreProps & CardInteractionProps> = memo(({
               onMouseLeave={handleMouseLeave}
               onMouseMove={handleMouseMove}
               onMouseDown={handleMouseDown}
-              className={`relative w-full h-full ${backColorClass} rounded-md shadow-md border-2 ${borderColorClass} flex-shrink-0 transition-transform duration-300 ${shouldHighlight ? 'scale-[1.15] z-10' : ''}`}
+              className={`relative w-full h-full ${backColorClass} rounded-md shadow-md border-2 ${borderColorClass} flex-shrink-0 transition-transform duration-300 ${shouldHighlight ? 'scale-[1.10] z-10' : ''}`}
             >
               {lastPlayedGroup && (
                 <div className="absolute bottom-[3px] left-[3px] pointer-events-none">
-                  <StatusIcon type={lastPlayedGroup.type} playerId={lastPlayedGroup.playerId} count={lastPlayedGroup.count} />
+                  <StatusIcon type={lastPlayedGroup.type} playerId={lastPlayedGroup.playerId} count={lastPlayedGroup.count} refreshVersion={imageRefreshVersion} playerColorMap={playerColorMap} smallStatusIcons={smallStatusIcons} />
                 </div>
               )}
             </div>
@@ -343,9 +382,19 @@ const CardCore: React.FC<CardCoreProps & CardInteractionProps> = memo(({
             : positiveGroups
 
           const ownerGlowClass = ownerColorData ? ownerColorData.glow : 'shadow-[0_0_15px_#ffffff]'
+          // Border: 4px normal, 5px when ready (1px thicker)
           const borderClass = shouldHighlight
-            ? `border-[6px] shadow-2xl ${ownerGlowClass}`
+            ? `border-[5px] shadow-2xl ${ownerGlowClass}`
             : 'border-4'
+
+          // Inner glow effect with owner's color when ready
+          const ownerColorName = card.ownerId ? playerColorMap.get(card.ownerId) : null
+          // Fallback to white/blue glow if color is missing from PLAYER_COLOR_RGB
+          const colorRgb = ownerColorName ? (PLAYER_COLOR_RGB[ownerColorName] || { r: 255, g: 255, b: 255 }) : null
+          const innerGlowStyle = shouldHighlight && colorRgb ? {
+            background: `radial-gradient(circle at center, transparent 20%, rgba(${colorRgb.r}, ${colorRgb.g}, ${colorRgb.b}, 0.7) 100%)`,
+            boxShadow: `inset 0 0 20px rgba(${colorRgb.r}, ${colorRgb.g}, ${colorRgb.b}, 0.6)`,
+          } : {}
 
           return (
             <div
@@ -354,7 +403,8 @@ const CardCore: React.FC<CardCoreProps & CardInteractionProps> = memo(({
               onMouseMove={handleMouseMove}
               onMouseDown={handleMouseDown}
               onClick={handleCardClick}
-              className={`relative w-full h-full ${cardBg} rounded-md shadow-md ${borderClass} ${themeColor} ${textColor} flex-shrink-0 select-none overflow-hidden transition-all duration-300 ${shouldHighlight ? 'scale-[1.15] z-10' : ''}`}
+              style={innerGlowStyle}
+              className={`relative w-full h-full ${cardBg} rounded-md shadow-md ${borderClass} ${themeColor} ${textColor} flex-shrink-0 select-none overflow-hidden transition-all duration-300 ${shouldHighlight ? 'scale-[1.10] z-10' : ''}`}
             >
               {currentImageSrc ? (
                 <>
@@ -373,13 +423,13 @@ const CardCore: React.FC<CardCoreProps & CardInteractionProps> = memo(({
                 <>
                   <div className="absolute top-[3px] left-[3px] right-[3px] flex flex-row-reverse flex-wrap justify-start items-start z-10 pointer-events-none">
                     {negativeGroups.map((group) => (
-                      <StatusIcon key={`${group.type}_${group.playerId}`} type={group.type} playerId={group.playerId} count={group.count} />
+                      <StatusIcon key={`${group.type}_${group.playerId}`} type={group.type} playerId={group.playerId} count={group.count} refreshVersion={imageRefreshVersion} playerColorMap={playerColorMap} smallStatusIcons={smallStatusIcons} />
                     ))}
                   </div>
 
                   <div className="absolute bottom-[3px] left-[3px] right-[30px] flex flex-wrap-reverse content-start items-end z-10 pointer-events-none">
                     {combinedPositiveGroups.map((group) => (
-                      <StatusIcon key={`${group.type}_${group.playerId}`} type={group.type} playerId={group.playerId} count={group.count} />
+                      <StatusIcon key={`${group.type}_${group.playerId}`} type={group.type} playerId={group.playerId} count={group.count} refreshVersion={imageRefreshVersion} playerColorMap={playerColorMap} smallStatusIcons={smallStatusIcons} />
                     ))}
                   </div>
                 </>
@@ -467,15 +517,30 @@ const arePropsEqual = (prevProps: CardCoreProps & CardInteractionProps, nextProp
   if (prevProps.disableActiveHighlights !== nextProps.disableActiveHighlights) {
     return false
   }
+  if (prevProps.preserveDeployAbilities !== nextProps.preserveDeployAbilities) {
+    return false
+  }
 
   // Context props that affect ability activation and highlighting
   if (prevProps.activePhaseIndex !== nextProps.activePhaseIndex) {
     return false
   }
-  if (prevProps.activeTurnPlayerId !== nextProps.activeTurnPlayerId) {
+  if (prevProps.activePlayerId !== nextProps.activePlayerId) {
     return false
   }
   if (prevProps.localPlayerId !== nextProps.localPlayerId) {
+    return false
+  }
+  if (prevProps.activeAbilitySourceCoords?.row !== nextProps.activeAbilitySourceCoords?.row ||
+      prevProps.activeAbilitySourceCoords?.col !== nextProps.activeAbilitySourceCoords?.col) {
+    return false
+  }
+  if (prevProps.boardCoords?.row !== nextProps.boardCoords?.row ||
+      prevProps.boardCoords?.col !== nextProps.boardCoords?.col) {
+    return false
+  }
+  // Check abilityCheckKey for rechecking ability readiness
+  if (prevProps.abilityCheckKey !== nextProps.abilityCheckKey) {
     return false
   }
 

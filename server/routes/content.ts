@@ -21,11 +21,17 @@ const router = express.Router();
  */
 router.get('/database', (req, res) => {
   try {
+    const cards = getAllCards();
+    const tokens = getAllTokens();
+    const counters = getAllCounters();
+    const deckFiles = getDeckFiles();
+
+    // Return as arrays of entries for easier client consumption
     const database = {
-      cards: getAllCards(),
-      tokens: getAllTokens(),
-      counters: getAllCounters(),
-      deckFiles: getDeckFiles()
+      cards: Object.entries(cards),
+      tokens: Object.entries(tokens),
+      counters: Object.entries(counters),
+      deckFiles: deckFiles
     };
     res.json(database);
   } catch (error) {

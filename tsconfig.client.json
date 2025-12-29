@@ -18,16 +18,23 @@
     "paths": {
       "@/*": ["./client/*"],
       "@content/*": ["./client/content/*"],
-      "@shared/*": ["./server/types/*"]
+      "@shared/*": ["./server/types/*"],
+      "@server/*": ["./server/*"]
     }
   },
   "include": [
-    "client/**/*"
+    "client/**/*",
+    "server/types/**/*",
+    "server/utils/**/*"
   ],
   "exclude": [
     "node_modules",
     "dist",
     "docs",
-    "server"
+    "server/services/**/*",
+    "server/handlers/**/*",
+    "server/constants/**/*",
+    "server/content/**/*",
+    "server/dev.ts"
   ]
 }

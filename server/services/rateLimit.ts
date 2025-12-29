@@ -10,9 +10,19 @@ import type { WebSocket } from 'ws';
 const messageCounts = new Map<WebSocket, number[]>(); // Connection -> [timestamps]
 
 /**
+ * Rate limit status interface
+ */
+export interface RateLimitStatus {
+  currentCount: number;
+  windowStart: number;
+  isLimited: boolean;
+  remaining: number;
+}
+
+/**
  * Check if connection is rate limited
  */
-export function isRateLimited(client) {
+export function isRateLimited(client: WebSocket): boolean {
   const now = Date.now();
   const timestamps = messageCounts.get(client) || [];
 
@@ -21,9 +31,8 @@ export function isRateLimited(client) {
     timestamp => now - timestamp < CONFIG.RATE_LIMIT_WINDOW
   );
 
-  // Check if limit exceeded (allow 60 messages per minute)
-  const MESSAGE_LIMIT = 60;
-  if (validTimestamps.length >= MESSAGE_LIMIT) {
+  // Check if limit exceeded
+  if (validTimestamps.length >= CONFIG.MESSAGE_RATE_LIMIT) {
     logger.warn(`Rate limit exceeded for connection`);
     return true;
   }
@@ -38,14 +47,14 @@ export function isRateLimited(client) {
 /**
  * Clean up rate limiting data for disconnected client
  */
-export function cleanupRateLimitData(client) {
+export function cleanupRateLimitData(client: WebSocket): void {
   messageCounts.delete(client);
 }
 
 /**
  * Get rate limit status for connection
  */
-export function getRateLimitStatus(client) {
+export function getRateLimitStatus(client: WebSocket): RateLimitStatus {
   const timestamps = messageCounts.get(client) || [];
   const now = Date.now();
 
@@ -56,6 +65,7 @@ export function getRateLimitStatus(client) {
   return {
     currentCount: validTimestamps.length,
     windowStart: validTimestamps[0] || now,
-    isLimited: validTimestamps.length >= 60
+    isLimited: validTimestamps.length >= CONFIG.MESSAGE_RATE_LIMIT,
+    remaining: Math.max(0, CONFIG.MESSAGE_RATE_LIMIT - validTimestamps.length)
   };
 }
