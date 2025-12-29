@@ -60,8 +60,8 @@ export async function initializeContent() {
     };
 
     // Process card abilities
-    const processCardAbilities = (cards) => {
-      const processed = {};
+    const processCardAbilities = (cards: Record<string, any>) => {
+      const processed: Record<string, any> = {};
       for (const [id, card] of Object.entries(cards)) {
         processed[id] = {
           ...card,
@@ -125,8 +125,8 @@ export async function updateContent(newContent) {
     };
 
     // Process card abilities
-    const processCardAbilities = (cards) => {
-      const processed = {};
+    const processCardAbilities = (cards: Record<string, any>) => {
+      const processed: Record<string, any> = {};
       for (const [id, card] of Object.entries(cards)) {
         processed[id] = {
           ...card,

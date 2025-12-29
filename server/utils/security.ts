@@ -41,16 +41,23 @@ export function validateGameStateSize(gameState) {
 
 /**
  * Check if message size is within limits
+ * Handles both string and Buffer (from WebSocket messages)
  */
-export function validateMessageSize(message) {
+export function validateMessageSize(message: Buffer | string | null | undefined): boolean {
   // Guard against null/undefined
   if (message == null) {
-    return true // Treat null/undefined as empty message
+    return true; // Treat null/undefined as empty message
   }
-  if (typeof message !== 'string') {
-    return false
+  // Handle Buffer (WebSocket messages are Buffers)
+  if (Buffer.isBuffer(message)) {
+    return message.length <= CONFIG.MAX_MESSAGE_SIZE;
   }
-  return message.length <= CONFIG.MAX_MESSAGE_SIZE;
+  // Handle string
+  if (typeof message === 'string') {
+    return message.length <= CONFIG.MAX_MESSAGE_SIZE;
+  }
+  // Unknown type
+  return false;
 }
 
 /**

@@ -8,7 +8,7 @@
     "build": "npm run build:client && npm run build:server",
     "build:client": "vite build --mode production",
     "build:server": "tsc --project tsconfig.server.json",
-    "start": "node simple-server.js",
+    "start": "node dist-server/index.js",
     "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
     "lint:fix": "eslint . --ext .ts,.tsx,.js,.jsx --fix",
     "type-check": "tsc --build --force",
