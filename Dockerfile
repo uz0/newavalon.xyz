@@ -1,9 +1,8 @@
 # Use Node.js 18 Alpine for smaller image size
 FROM node:18-alpine
 
-# Set environment variables
-ENV NODE_ENV=production \
-    PORT=8080
+# Set environment variables (NODE_ENV set after build to avoid skipping devDependencies)
+ENV PORT=8080
 
 # Install security tools and system updates
 RUN apk update && apk upgrade && \
@@ -22,7 +21,8 @@ WORKDIR /app
 # Copy package files first for better caching
 COPY package*.json ./
 
-# Install ALL dependencies (both production and dev) since server.js needs express-ws
+# Install ALL dependencies (both production and dev) for building
+# Note: NODE_ENV must not be 'production' here or npm ci will skip devDependencies
 RUN npm ci && \
     npm cache clean --force && \
     chown -R nodejs:nodejs /app
@@ -30,11 +30,11 @@ RUN npm ci && \
 # Copy source code
 COPY --chown=nodejs:nodejs . .
 
-# Build the application (force output to docs folder)
-RUN npm run build && \
-    if [ -d "dist" ] && [ ! -d "docs" ]; then \
-        mv dist docs; \
-    fi
+# Build the application
+RUN npm run build
+
+# Set production environment after build (devDependencies no longer needed at runtime)
+ENV NODE_ENV=production
 
 # Create logs directory with proper permissions before switching to non-root user
 RUN mkdir -p /app/logs && chown -R nodejs:nodejs /app/logs
@@ -53,4 +53,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 ENTRYPOINT ["dumb-init", "--"]
 
 # Start the application
-CMD ["node", "server.js"]
+CMD ["node", "dist-server/index.js"]

@@ -4,47 +4,27 @@ import tailwindcss from 'tailwindcss'
 import autoprefixer from 'autoprefixer'
 import path from 'path'
 
-export default defineConfig(({ command }: { command: string }) => {
-  const baseConfig = {
-    plugins: [react()],
-    root: 'client', // Set root to client directory
-    server: {
-      host: true,
-      port: 8080, // Vite dev server port (for standalone use)
+export default defineConfig({
+  plugins: [react()],
+  root: 'client',
+  server: {
+    host: true,
+    port: 8080,
+  },
+  css: {
+    postcss: {
+      plugins: [tailwindcss(), autoprefixer()],
     },
-    css: {
-      devSourcemap: true,
-      postcss: {
-        plugins: [
-          tailwindcss(),
-          autoprefixer(),
-        ],
-      },
+  },
+  build: {
+    outDir: '../dist',
+    cssMinify: true,
+    emptyOutDir: true,
+  },
+  resolve: {
+    alias: {
+      '@': path.resolve('./client'),
+      '@server': path.resolve('./server'),
     },
-    resolve: {
-      alias: {
-        '@': path.resolve(__dirname, './client'),
-        '@server': path.resolve(__dirname, './server'),
-      }
-    }
-  }
-
-  if (command === 'build') {
-    // Эта часть сработает при запуске 'npm run build'
-    return {
-      ...baseConfig,
-      base: `/`, // Базовый путь
-      build: {
-        outDir: '../dist',      // Output directory relative to client root (client -> ../dist = project/dist)
-        cssMinify: true,
-        emptyOutDir: true,
-      },
-    }
-  } else {
-    // Эта часть сработает при запуске 'npm run dev' (локальная разработка)
-    return {
-      ...baseConfig,
-      base: '/', // Локально работаем просто от корня localhost
-    }
-  }
+  },
 })

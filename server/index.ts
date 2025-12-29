@@ -4,7 +4,8 @@
  */
 
 import express from 'express';
-import expressWs from 'express-ws';
+import { createServer } from 'http';
+import { WebSocketServer } from 'ws';
 import { fileURLToPath } from 'url';
 import path from 'path';
 
@@ -17,10 +18,8 @@ import { validateConfig } from './utils/config.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Create Express app and enable WebSocket
+// Create Express app
 const app = express();
-const wsInstance = expressWs(app);
-const wss = wsInstance.getWss();
 
 // Validate configuration
 validateConfig();
@@ -38,21 +37,42 @@ app.use(express.json({ limit: '10mb' }));
 
 // Determine static file path based on environment
 const isProduction = process.env.NODE_ENV === 'production' || __dirname.includes('dist-server');
-const staticPath = isProduction
-  ? path.join(__dirname, '../../dist')  // From dist-server/server/ to project/dist
-  : path.join(__dirname, '../client/dist'); // Development (not used, dev uses tsx)
+
+// For bundled server.js, __dirname will be the root, so use process.cwd() and calculate correctly
+const getStaticPath = (): string => {
+  if (isProduction) {
+    // In production (bundled server.js or dist-server), static files are at /app/dist
+    return path.join(process.cwd(), 'dist');
+  }
+  // Development: not used, dev server uses tsx
+  return path.join(__dirname, '../client/dist');
+};
+
+const staticPath = getStaticPath();
 
 app.use(express.static(staticPath));
 
 // Setup routes
 setupRoutes(app);
 
+// Start server
+const PORT = process.env.PORT || 8822;
+const server = createServer(app);
+
+// Create WebSocket server attached to HTTP server
+const wss = new WebSocketServer({ noServer: true });
+
+// Handle WebSocket upgrade
+server.on('upgrade', (request, socket, head) => {
+  wss.handleUpgrade(request, socket, head, (ws) => {
+    wss.emit('connection', ws, request);
+  });
+});
+
 // Setup WebSocket handlers
 setupWebSocket(wss);
 
-// Start server
-const PORT = process.env.PORT || 8822;
-const server = app.listen(PORT, () => {
+server.listen(PORT, () => {
   logger.info(`Server running on port ${PORT}`);
   logger.info(`WebSocket server ready`);
 });
