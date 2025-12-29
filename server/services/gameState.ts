@@ -6,6 +6,7 @@ import { logger } from '../utils/logger.js';
 import { CONFIG } from '../utils/config.js';
 import { validateGameStateSize } from '../utils/security.js';
 import type { WebSocket } from 'ws';
+import { gameTerminationTimers, gameInactivityTimers, playerDisconnectTimers } from './gameLifecycle.js';
 
 // Type definitions
 interface Player {
@@ -60,9 +61,6 @@ interface GameOptions {
 const gameStates = new Map<string, GameState>();
 const clientGameMap = new Map<WebSocket, string>();
 const gameLogs = new Map<string, string[]>();
-const gameTerminationTimers = new Map<string, NodeJS.Timeout>();
-const gameInactivityTimers = new Map<string, NodeJS.Timeout>();
-const playerDisconnectTimers = new Map<string, NodeJS.Timeout>();
 
 /**
  * Create new game state

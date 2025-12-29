@@ -1053,20 +1053,24 @@ export const useGameState = () => {
   }, [updateState])
 
   const toggleActivePlayer = useCallback((playerId: number) => {
-    ws.current?.send(JSON.stringify({
-      type: 'TOGGLE_ACTIVE_PLAYER',
-      gameId: gameState.gameId,
-      playerId
-    }))
+    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify({
+        type: 'TOGGLE_ACTIVE_PLAYER',
+        gameId: gameState.gameId,
+        playerId
+      }))
+    }
   }, [gameState.gameId])
 
   const toggleAutoDraw = useCallback((playerId: number, enabled: boolean) => {
-    ws.current?.send(JSON.stringify({
-      type: 'TOGGLE_AUTO_DRAW',
-      gameId: gameState.gameId,
-      playerId,
-      enabled
-    }))
+    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify({
+        type: 'TOGGLE_AUTO_DRAW',
+        gameId: gameState.gameId,
+        playerId,
+        enabled
+      }))
+    }
   }, [gameState.gameId])
 
   const setPhase = useCallback((phaseIndex: number) => {

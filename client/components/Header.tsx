@@ -79,9 +79,9 @@ const RoundTracker = memo<{
             onMouseEnter={onMouseEnter}
             onMouseLeave={onMouseLeave}
           >
-            <span className="text-yellow-500 font-bold text-sm tracking-wider">ROUND {currentRound}</span>
+            <span className="text-yellow-500 font-bold text-sm tracking-wider">{t('round').toUpperCase()} {currentRound}</span>
             <span className="text-gray-500 mx-2">|</span>
-            <span className="text-gray-300 text-xs font-mono">TURN {turnNumber}</span>
+            <span className="text-gray-300 text-xs font-mono">{t('turn').toUpperCase()} {turnNumber}</span>
           </div>
 
           {showTooltip && (

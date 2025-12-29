@@ -21,7 +21,7 @@ Before commit **MANDATORY**:
       - Updated dependencies or build configuration
       - Altered WebSocket message types or game state structure
    b. Update locales, all should be in sync
-   c. Ensure all lint and types well
+   c. Ensure all lint checks and type checks pass
 
 ### Merging
 - **Build & Test with docker**:

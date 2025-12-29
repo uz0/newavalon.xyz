@@ -68,7 +68,7 @@ export function handleUpdateDeckData(ws, data) {
       }
     }
 
-    // Validate deck files array
+    // Validate and sanitize deck files array
     const sanitizedDeckFiles = Array.isArray(deckData.deckFiles)
       ? deckData.deckFiles.filter(deck => {
           const deckObj = deck as any;
@@ -76,12 +76,27 @@ export function handleUpdateDeckData(ws, data) {
           return deckObj.id && deckObj.name && typeof deckObj.id === 'string' && typeof deckObj.name === 'string';
         }).map(deck => {
           const deckObj = deck as any;
-          return {
+          const sanitizedDeck: any = {
             id: sanitizeString(String(deckObj.id), 50),
             name: sanitizeString(String(deckObj.name), 100),
-            ...(deckObj.isSelectable !== undefined && { isSelectable: Boolean(deckObj.isSelectable) }),
-            ...(deckObj.cards && Array.isArray(deckObj.cards) && { cards: deckObj.cards })
+            ...(deckObj.isSelectable !== undefined && { isSelectable: Boolean(deckObj.isSelectable) })
           };
+
+          // Validate and sanitize cards array if present
+          if (deckObj.cards && Array.isArray(deckObj.cards)) {
+            const sanitizedCards = deckObj.cards
+              .filter((card: any) => card && typeof card === 'object' && typeof card.id === 'string')
+              .map((card: any) => ({
+                id: sanitizeString(String(card.id), 50),
+                count: Math.max(0, Math.min(99, Number(card.count) || 1))
+              }));
+
+            if (sanitizedCards.length > 0) {
+              sanitizedDeck.cards = sanitizedCards;
+            }
+          }
+
+          return sanitizedDeck;
         })
       : [];
 

@@ -225,7 +225,7 @@ const CardCore: React.FC<CardCoreProps & CardInteractionProps> = memo(({
   }, [card.statuses])
 
   // Status icon sub-component for reusability
-  const StatusIcon = memo(({ type, playerId, count }: { type: string, playerId: number, count: number }) => {
+  const StatusIcon = memo(({ type, playerId, count, refreshVersion }: { type: string, playerId: number, count: number, refreshVersion?: number }) => {
     const statusColorName = playerColorMap.get(playerId)
     const statusBg = (statusColorName && PLAYER_COLORS[statusColorName]) ? PLAYER_COLORS[statusColorName].bg : 'bg-gray-500'
 
@@ -233,10 +233,10 @@ const CardCore: React.FC<CardCoreProps & CardInteractionProps> = memo(({
       let url = STATUS_ICONS[type]
       if (url) {
         const separator = url.includes('?') ? '&' : '?'
-        url = `${url}${separator}v=${imageRefreshVersion}`
+        url = `${url}${separator}v=${refreshVersion}`
       }
       return url
-    }, [type])
+    }, [type, refreshVersion])
 
     const isSingleInstance = ['Support', 'Threat', 'Revealed', 'LastPlayed'].includes(type)
     const showCount = !isSingleInstance && count > 1
@@ -346,7 +346,7 @@ const CardCore: React.FC<CardCoreProps & CardInteractionProps> = memo(({
             >
               {lastPlayedGroup && (
                 <div className="absolute bottom-[3px] left-[3px] pointer-events-none">
-                  <StatusIcon type={lastPlayedGroup.type} playerId={lastPlayedGroup.playerId} count={lastPlayedGroup.count} />
+                  <StatusIcon type={lastPlayedGroup.type} playerId={lastPlayedGroup.playerId} count={lastPlayedGroup.count} refreshVersion={imageRefreshVersion} />
                 </div>
               )}
             </div>
@@ -411,13 +411,13 @@ const CardCore: React.FC<CardCoreProps & CardInteractionProps> = memo(({
                 <>
                   <div className="absolute top-[3px] left-[3px] right-[3px] flex flex-row-reverse flex-wrap justify-start items-start z-10 pointer-events-none">
                     {negativeGroups.map((group) => (
-                      <StatusIcon key={`${group.type}_${group.playerId}`} type={group.type} playerId={group.playerId} count={group.count} />
+                      <StatusIcon key={`${group.type}_${group.playerId}`} type={group.type} playerId={group.playerId} count={group.count} refreshVersion={imageRefreshVersion} />
                     ))}
                   </div>
 
                   <div className="absolute bottom-[3px] left-[3px] right-[30px] flex flex-wrap-reverse content-start items-end z-10 pointer-events-none">
                     {combinedPositiveGroups.map((group) => (
-                      <StatusIcon key={`${group.type}_${group.playerId}`} type={group.type} playerId={group.playerId} count={group.count} />
+                      <StatusIcon key={`${group.type}_${group.playerId}`} type={group.type} playerId={group.playerId} count={group.count} refreshVersion={imageRefreshVersion} />
                     ))}
                   </div>
                 </>

@@ -104,8 +104,11 @@ export const useAppCommand = ({
     if (commandModalCard.baseId?.toLowerCase().includes('inspiration')) {
       rewardType = optionIndex === 0 ? 'DRAW_REMOVED' : 'SCORE_REMOVED'
       if (mainActions.length > 0 && mainActions[0].type === 'ENTER_MODE') {
-        // Pass the reward type to the next step
-        mainActions[0].payload = { ...mainActions[0].payload, rewardType }
+        // Pass the reward type to the next step (immutable update)
+        mainActions[0] = {
+          ...mainActions[0],
+          payload: { ...mainActions[0].payload, rewardType }
+        }
       }
     }
 

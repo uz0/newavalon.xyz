@@ -70,12 +70,13 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines and workflow.
 │   ├── components/          # UI components
 │   ├── hooks/              # Custom React hooks
 │   ├── locales/            # Translation files
+│   ├── types/              # Client TypeScript types
 │   └── utils/              # Client utilities
 ├── server/                  # Node.js backend
 │   ├── handlers/           # WebSocket message handlers
 │   ├── services/           # Core services
+│   ├── types/              # Server TypeScript types
 │   └── utils/              # Server utilities
-└── shared/                  # Shared types and utilities
 ```
 
 ## License

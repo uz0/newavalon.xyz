@@ -675,7 +675,8 @@ export const useAppAbilities = ({
     }
 
     const owner = gameState.players.find(p => p.id === card.ownerId)
-    const canControl = localPlayerId === card.ownerId || (owner?.isDummy)
+    // Only the host (player 1) can control dummy players' cards
+    const canControl = localPlayerId === card.ownerId || (owner?.isDummy && localPlayerId === 1)
 
     if (gameState.activePlayerId !== card.ownerId) {
       return

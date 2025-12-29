@@ -166,7 +166,7 @@ export const sr: TranslationResource = {
     remove: 'Ukloni',
     toDeckTop: 'Na vrh špila',
     toDeckBottom: 'Na dno špila',
-    storyMode: 'Prični režim',
+    storyMode: 'Režim priče',
     puzzles: 'Slagalice',
     changeColor: 'Promeni boju',
     firstPlayer: 'Prvi igrač',

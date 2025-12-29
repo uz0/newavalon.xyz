@@ -1,30 +1,17 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx tsc:*)",
-      "Bash(git checkout:*)",
+      "Bash(npx tsc --noEmit)",
+      "Bash(git checkout -- .)",
       "Bash(Get-Process -Name node -ErrorAction SilentlyContinue)",
       "Bash(Stop-Process -Force)",
       "Bash(Start-Sleep -Seconds 2)",
       "Bash(npm run dev)",
-      "Bash(npx eslint:*)",
-      "Bash(cat:*)",
-      "Bash(netstat:*)",
-      "Bash(findstr:*)",
-      "Bash(taskkill:*)",
-      "Bash(timeout:*)",
-      "Bash(Start-Sleep -Seconds 5)",
-      "Bash(Stop-Process -Id 2192 -Force)",
-      "Bash(Start-Sleep -Seconds 3)",
-      "Bash(Where-Object {$_Id -eq 2192})",
-      "Bash(cmd.exe /c \"taskkill /F /PID 2192 && timeout /t 2 /nobreak >nul && cd /d F:\\\\Users\\\\Anahoret\\\\Documents\\\\newavalon.xyz\\\\newavalon.xyz && npm run dev\")",
-      "Bash(cmd.exe /c \"taskkill /F /PID 2192 & taskkill /F /IM node.exe\")",
-      "Bash(cmd.exe:*)",
-      "Bash(npm run type-check:*)",
+      "Bash(npx eslint client/ server/)",
+      "Bash(npm run type-check)",
       "Bash(npm run lint)",
-      "Bash(npm run lint:*)",
-      "Bash(powershell:*)",
-      "Bash(cd:*)"
+      "Bash(powershell -Command Get-Process)",
+      "Bash(cd /Users/dcversus/Documents/GitHub/NewAvalonSkirmish)"
     ]
   }
 }
