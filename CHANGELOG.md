@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed Zius ability - now correctly targets only cells in the same row or column as the Exploit target card
 - Fixed floating score numbers not displaying - added immediate local state update in triggerFloatingText
 - Fixed visual effect broadcasting to prevent duplicates by excluding sender from broadcast
+- Fixed token placement mode - now persists on invalid targets instead of closing; only closes on valid target placement, right-click, or clicking outside game areas
+- Fixed resurrected cards from discard (Immunis ability) - now properly initialize ready statuses so abilities can be used after returning to play
 
 ### Changed
 - **Zius ability rework**: Now works like Unwavering Integrator - single-click line selection through the Exploit target card
