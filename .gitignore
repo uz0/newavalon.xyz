@@ -26,3 +26,4 @@ dist-client
 *.sw?
 tsconfig.tsbuildinfo
 nul
+.claude/settings.local.json
