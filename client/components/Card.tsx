@@ -30,6 +30,72 @@ interface CardInteractionProps {
   abilityCheckKey?: number; // Incremented to recheck ability readiness after ability completion
 }
 
+// Extracted outside CardCore to preserve React.memo optimization
+interface StatusIconProps {
+  type: string;
+  playerId: number;
+  count: number;
+  refreshVersion?: number;
+  playerColorMap: Map<number, PlayerColor>;
+  smallStatusIcons?: boolean;
+}
+
+const StatusIcon: React.FC<StatusIconProps> = memo(({ type, playerId, count, refreshVersion, playerColorMap, smallStatusIcons = false }) => {
+  const statusColorName = playerColorMap.get(playerId)
+  const statusBg = (statusColorName && PLAYER_COLORS[statusColorName]) ? PLAYER_COLORS[statusColorName].bg : 'bg-gray-500'
+
+  const iconUrl = useMemo(() => {
+    let url = STATUS_ICONS[type]
+    if (url) {
+      const separator = url.includes('?') ? '&' : '?'
+      url = `${url}${separator}v=${refreshVersion}`
+    }
+    return url
+  }, [type, refreshVersion])
+
+  const isSingleInstance = ['Support', 'Threat', 'Revealed', 'LastPlayed'].includes(type)
+  const showCount = !isSingleInstance && count > 1
+
+  // When count is shown, icon padding is larger to make the icon smaller.
+  const iconPaddingClass = showCount ? 'p-1.5' : 'p-1'
+
+  // Size logic: w-8 (32px) is default. w-6 (24px) is 75%, which is 25% smaller.
+  const sizeClass = smallStatusIcons ? 'w-6 h-6' : 'w-8 h-8'
+  const fontSizeClass = smallStatusIcons
+    ? (showCount ? 'text-xs' : 'text-base')
+    : (showCount ? 'text-base' : 'text-lg')
+
+  const countBadgeSize = smallStatusIcons ? 'text-[10px]' : 'text-xs'
+
+  return (
+    <div
+      className={`relative ${sizeClass} flex items-center justify-center ${statusBg} bg-opacity-80 rounded-sm shadow-md flex-shrink-0`}
+      title={`${type} (Player ${playerId}) ${!isSingleInstance && count > 0 ? `x${count}` : ''}`}
+    >
+      {iconUrl ? (
+        <img
+          src={iconUrl}
+          alt={type}
+          className={`object-contain w-full h-full transition-all duration-150 ${iconPaddingClass}`}
+        />
+      ) : (
+        <span className={`text-white font-black transition-all duration-150 ${fontSizeClass}`} style={{ textShadow: '0 0 2px black' }}>
+          {type.charAt(0)}
+        </span>
+      )}
+
+      {showCount && (
+        <span
+          className={`absolute top-0 right-0.5 text-white font-bold ${countBadgeSize} leading-none`}
+          style={{ textShadow: '1px 1px 2px black' }}
+        >
+          {count}
+        </span>
+      )}
+    </div>
+  )
+})
+
 const CardCore: React.FC<CardCoreProps & CardInteractionProps> = memo(({
   card,
   isFaceUp,
@@ -226,63 +292,6 @@ const CardCore: React.FC<CardCoreProps & CardInteractionProps> = memo(({
     }, {} as Record<string, { type: string, playerId: number, count: number }>)
   }, [card.statuses])
 
-  // Status icon sub-component for reusability
-  const StatusIcon = memo(({ type, playerId, count, refreshVersion }: { type: string, playerId: number, count: number, refreshVersion?: number }) => {
-    const statusColorName = playerColorMap.get(playerId)
-    const statusBg = (statusColorName && PLAYER_COLORS[statusColorName]) ? PLAYER_COLORS[statusColorName].bg : 'bg-gray-500'
-
-    const iconUrl = useMemo(() => {
-      let url = STATUS_ICONS[type]
-      if (url) {
-        const separator = url.includes('?') ? '&' : '?'
-        url = `${url}${separator}v=${refreshVersion}`
-      }
-      return url
-    }, [type, refreshVersion])
-
-    const isSingleInstance = ['Support', 'Threat', 'Revealed', 'LastPlayed'].includes(type)
-    const showCount = !isSingleInstance && count > 1
-
-    // When count is shown, icon padding is larger to make the icon smaller.
-    const iconPaddingClass = showCount ? 'p-1.5' : 'p-1'
-
-    // Size logic: w-8 (32px) is default. w-6 (24px) is 75%, which is 25% smaller.
-    const sizeClass = smallStatusIcons ? 'w-6 h-6' : 'w-8 h-8'
-    const fontSizeClass = smallStatusIcons
-      ? (showCount ? 'text-xs' : 'text-base')
-      : (showCount ? 'text-base' : 'text-lg')
-
-    const countBadgeSize = smallStatusIcons ? 'text-[10px]' : 'text-xs'
-
-    return (
-      <div
-        className={`relative ${sizeClass} flex items-center justify-center ${statusBg} bg-opacity-80 rounded-sm shadow-md flex-shrink-0`}
-        title={`${type} (Player ${playerId}) ${!isSingleInstance && count > 0 ? `x${count}` : ''}`}
-      >
-        {iconUrl ? (
-          <img
-            src={iconUrl}
-            alt={type}
-            className={`object-contain w-full h-full transition-all duration-150 ${iconPaddingClass}`}
-          />
-        ) : (
-          <span className={`text-white font-black transition-all duration-150 ${fontSizeClass}`} style={{ textShadow: '0 0 2px black' }}>
-            {type.charAt(0)}
-          </span>
-        )}
-
-        {showCount && (
-          <span
-            className={`absolute top-0 right-0.5 text-white font-bold ${countBadgeSize} leading-none`}
-            style={{ textShadow: '1px 1px 2px black' }}
-          >
-            {count}
-          </span>
-        )}
-      </div>
-    )
-  })
-
   // Memoized values (must be called before any conditional returns)
   const ownerColorData = useMemo(() => {
     const ownerColorName = card.ownerId ? playerColorMap.get(card.ownerId) : null
@@ -348,7 +357,7 @@ const CardCore: React.FC<CardCoreProps & CardInteractionProps> = memo(({
             >
               {lastPlayedGroup && (
                 <div className="absolute bottom-[3px] left-[3px] pointer-events-none">
-                  <StatusIcon type={lastPlayedGroup.type} playerId={lastPlayedGroup.playerId} count={lastPlayedGroup.count} refreshVersion={imageRefreshVersion} />
+                  <StatusIcon type={lastPlayedGroup.type} playerId={lastPlayedGroup.playerId} count={lastPlayedGroup.count} refreshVersion={imageRefreshVersion} playerColorMap={playerColorMap} smallStatusIcons={smallStatusIcons} />
                 </div>
               )}
             </div>
@@ -414,13 +423,13 @@ const CardCore: React.FC<CardCoreProps & CardInteractionProps> = memo(({
                 <>
                   <div className="absolute top-[3px] left-[3px] right-[3px] flex flex-row-reverse flex-wrap justify-start items-start z-10 pointer-events-none">
                     {negativeGroups.map((group) => (
-                      <StatusIcon key={`${group.type}_${group.playerId}`} type={group.type} playerId={group.playerId} count={group.count} refreshVersion={imageRefreshVersion} />
+                      <StatusIcon key={`${group.type}_${group.playerId}`} type={group.type} playerId={group.playerId} count={group.count} refreshVersion={imageRefreshVersion} playerColorMap={playerColorMap} smallStatusIcons={smallStatusIcons} />
                     ))}
                   </div>
 
                   <div className="absolute bottom-[3px] left-[3px] right-[30px] flex flex-wrap-reverse content-start items-end z-10 pointer-events-none">
                     {combinedPositiveGroups.map((group) => (
-                      <StatusIcon key={`${group.type}_${group.playerId}`} type={group.type} playerId={group.playerId} count={group.count} refreshVersion={imageRefreshVersion} />
+                      <StatusIcon key={`${group.type}_${group.playerId}`} type={group.type} playerId={group.playerId} count={group.count} refreshVersion={imageRefreshVersion} playerColorMap={playerColorMap} smallStatusIcons={smallStatusIcons} />
                     ))}
                   </div>
                 </>

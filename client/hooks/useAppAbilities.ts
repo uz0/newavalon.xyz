@@ -798,16 +798,16 @@ export const useAppAbilities = ({
           }
         }
 
-        if (exploitCount > 0) {
+        if (exploitCount > 0 && actorId) {
           if (sourceCoords) {
             triggerFloatingText({
               row: sourceCoords.row,
               col: sourceCoords.col,
               text: `+${exploitCount}`,
-              playerId: actorId!,
+              playerId: actorId,
             })
           }
-          updatePlayerScore(actorId!, exploitCount)
+          updatePlayerScore(actorId, exploitCount)
         }
         if (sourceCoords && sourceCoords.row >= 0) {
           markAbilityUsed(sourceCoords, isDeployAbility)

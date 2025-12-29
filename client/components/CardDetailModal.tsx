@@ -52,7 +52,7 @@ export const CardDetailModal: React.FC<CardDetailModalProps> = ({ card, ownerPla
 
   const ownerColorName = ownerPlayer?.color
   const themeColor = ownerColorName
-    ? PLAYER_COLORS[ownerColorName].border
+    ? PLAYER_COLORS[ownerColorName]?.border || DECK_THEMES[card.deck as keyof typeof DECK_THEMES]?.color || 'border-gray-300'
     : DECK_THEMES[card.deck as keyof typeof DECK_THEMES]?.color || 'border-gray-300'
 
   const teamName = useMemo(() => {

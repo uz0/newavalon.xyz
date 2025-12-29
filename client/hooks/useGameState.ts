@@ -1065,22 +1065,22 @@ export const useGameState = () => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
       ws.current.send(JSON.stringify({
         type: 'TOGGLE_ACTIVE_PLAYER',
-        gameId: gameState.gameId,
+        gameId: gameStateRef.current.gameId,
         playerId
       }))
     }
-  }, [gameState.gameId])
+  }, [])
 
   const toggleAutoDraw = useCallback((playerId: number, enabled: boolean) => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
       ws.current.send(JSON.stringify({
         type: 'TOGGLE_AUTO_DRAW',
-        gameId: gameState.gameId,
+        gameId: gameStateRef.current.gameId,
         playerId,
         enabled
       }))
     }
-  }, [gameState.gameId])
+  }, [])
 
   const setPhase = useCallback((phaseIndex: number) => {
     updateState(currentState => {

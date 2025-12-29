@@ -14,6 +14,12 @@
  * - temporaryShelter: Shield 1. Then remove aim or move 1-2.
  * - enhancedInterrogation: Aim 1. Then reveal or move card with aim.
  * - mobilization1 / lineBreach: Gain points in a line.
+ *
+ * NOTE: Filter functions in AbilityAction payloads are runtime-only and not
+ * serializable. They are regenerated fresh on both client and server based on
+ * the same inputs (cardId, optionIndex, card, gameState, localPlayerId).
+ * This design works because only card IDs and option indices are sent over
+ * the network, not the full AbilityAction objects with their filter closures.
  */
 
 import type { AbilityAction, Card, GameState } from '../types/types.js'

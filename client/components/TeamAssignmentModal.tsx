@@ -64,7 +64,9 @@ export const TeamAssignmentModal: React.FC<TeamAssignmentModalProps> = ({ player
     if (gameMode === GameMode.ThreeVOne) {
       return { team1Capacity: 3, team2Capacity: 1 }
     }
-    return { team1Capacity: 0, team2Capacity: 0 } // Should not happen
+    // Unexpected gameMode - fall back to TwoVTwo capacities and log warning
+    console.warn(`Unexpected gameMode: ${gameMode}, falling back to TwoVTwo capacities`)
+    return { team1Capacity: 2, team2Capacity: 2 }
   }, [gameMode])
 
   const isReady = unassigned.length === 0 && team1.length === team1Capacity && team2.length === team2Capacity
