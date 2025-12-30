@@ -6,11 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-## [0.2.4] - 2025-12-30
+## [0.2.3] - 2025-12-30
 
 ### Fixed
-- **HOTFIX**: Force production rebuild - client code was outdated on server causing empty decks in game sessions
-- Content API working correctly but client wasn't calling fetchContentDatabase()
+- Fixed deck data sync - server now correctly preserves `cards` array with `cardId/quantity` format when receiving deck data from client
+- Added GitHub Actions workflow for automatic Docker image builds
+- Fixed issue where deckFiles were sent without cards array causing empty decks in game sessions
+
+### Added
+- GitHub Actions workflow (`.github/workflows/docker.yml`) for automatic Docker builds on push to master
+- Docker images now pushed to GitHub Container Registry (`ghcr.io/uz0/newavalonskirmish`)
 
 
 ## [0.2.2] - 2025-12-29

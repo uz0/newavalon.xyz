@@ -131,13 +131,16 @@ export function handleUpdateDeckData(ws: WebSocket & { playerId?: number }, data
           };
 
           // Validate and sanitize cards array if present
+          // Support both cardId/quantity (from JSON) and id/count (legacy) formats
           if (deckObj.cards && Array.isArray(deckObj.cards)) {
             const sanitizedCards = deckObj.cards
-              .filter((card: any) => card && typeof card === 'object' && typeof card.id === 'string')
-              .map((card: any) => ({
-                id: sanitizeString(String(card.id), 50),
-                count: Math.max(0, Math.min(99, Number(card.count) || 1))
-              }));
+              .filter((card: any) => card && typeof card === 'object')
+              .map((card: any) => {
+                const cardId = String(card.cardId || card.id || '');
+                const quantity = Math.max(0, Math.min(99, Number(card.quantity || card.count || 1)));
+                return { cardId, quantity };
+              })
+              .filter((card: any) => card.cardId !== '');
 
             if (sanitizedCards.length > 0) {
               sanitizedDeck.cards = sanitizedCards;
