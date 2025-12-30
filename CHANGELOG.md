@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Fixed deck data sync - server now correctly preserves `cards` array with `cardId/quantity` format when receiving deck data from client
-- Added GitHub Actions workflow for automatic Docker image builds
+- Fixed ability text formatting - `sanitizeString` now preserves newlines (\n) for proper multi-line ability display in tooltips
 - Fixed issue where deckFiles were sent without cards array causing empty decks in game sessions
 
 ### Added

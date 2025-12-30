@@ -7,13 +7,14 @@ import crypto from 'crypto';
 
 /**
  * Sanitize string input
+ * Preserves newlines (\n) and carriage returns (\r) for ability text formatting
  */
 export function sanitizeString(input, maxLength = CONFIG.MAX_STRING_LENGTH) {
   if (typeof input !== 'string') return '';
 
   return input
     .replace(/[<>"'&]/g, '') // Remove HTML special chars
-    .replace(/[\x00-\x1F\x7F]/g, '') // Remove control characters
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // Remove control characters except \n (0x0A) and \r (0x0D)
     .substring(0, maxLength);
 }
 
